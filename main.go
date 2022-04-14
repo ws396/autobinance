@@ -272,6 +272,7 @@ func (client binanceClientExt) getKlines(symbol string) ([]*binance.Kline, error
 	return klines, nil
 }
 
+/**/
 func (client binanceClientExt) getAccount() *binance.Account {
 	account, err := client.NewGetAccountService().Do(context.Background())
 	if err != nil {
