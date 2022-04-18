@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -18,6 +19,11 @@ type binanceClientExt struct {
 	*binance.Client
 }
 
+var (
+	timeframe = 3
+	buyAmount = 100
+)
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -25,32 +31,94 @@ func main() {
 	}
 
 	var (
-		apiKey    = os.Getenv("API_KEY")
-		secretKey = os.Getenv("SECRET_KEY")
+		apiKey          = os.Getenv("API_KEY")
+		secretKey       = os.Getenv("SECRET_KEY")
+		input           string
+		strategyRunning = false
 	)
+
 	binance.UseTestnet = true
 	client := &binanceClientExt{binance.NewClient(apiKey, secretKey)}
 
-	fmt.Println("1) THE Strategy\n2) Check klines\n3) Check account\n4) Get EMA prognosis\n5) List trades")
+	fmt.Println("1) Start strategy execution\n2) Check klines\n3) Check account\n4) Get EMA prognosis\n5) List trades")
 
-	var input string
 	for {
 		fmt.Println("Your choice: ")
 		fmt.Scanln(&input)
 
 		switch input {
-		case "1":
-			fmt.Println("Select the coin symbols (ex. LTCBTC): ")
-			fmt.Scanln(&input)
-
-			klines, err := client.getKlines(input)
-			if err != nil {
-				fmt.Println(err)
+		case "1": // Keep in mind that with current approach the unsold assets will remain unsold with app relaunch
+			if strategyRunning {
+				fmt.Println("err: the strategy is already running")
 				break
 			}
 
-			series := getSeries(klines)
-			fmt.Println(StrategyOne(series))
+			fmt.Println("Select the coin symbols for Strategy One (ex. BNBBUSD): ")
+			fmt.Scanln(&input)
+
+			exchangeInfo, err := client.NewExchangeInfoService().Symbol(input).Do(context.Background())
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			showInConsole(exchangeInfo.Symbols[0].LotSizeFilter().MinQuantity)
+
+			ticker := time.NewTicker(time.Duration(timeframe) * time.Minute)
+			strategyRunning = true
+
+			go func(input string) {
+				for {
+					select {
+					case <-ticker.C:
+						klines, err := client.getKlines(input)
+						if err != nil {
+							fmt.Println(err)
+							break
+						}
+
+						series := getSeries(klines)
+						decision := StrategyOne(series)
+
+						switch decision {
+						case "Buy":
+							quantity := fmt.Sprintf("%f", 10/series.LastCandle().ClosePrice.Float())
+							order, err := client.NewCreateOrderService().
+								Symbol(input).
+								Side(binance.SideTypeBuy).
+								Type(binance.OrderTypeLimit). // Use market order instead?
+								TimeInForce(binance.TimeInForceTypeIOC).
+								Quantity(quantity).
+								Price(series.LastCandle().ClosePrice.String()).
+								Do(context.Background())
+							if err != nil {
+								fmt.Println(err)
+								return
+							}
+
+							fmt.Println(order)
+							client.showCurrencies("BNB", "BUSD")
+						case "Sell":
+							quantity := fmt.Sprintf("%f", 10/series.LastCandle().ClosePrice.Float())
+							order, err := client.NewCreateOrderService().
+								Symbol(input).
+								Side(binance.SideTypeSell).
+								Type(binance.OrderTypeLimit). // Use market order instead?
+								TimeInForce(binance.TimeInForceTypeIOC).
+								Quantity(quantity).
+								Price(series.LastCandle().ClosePrice.String()).
+								Do(context.Background())
+
+							if err != nil {
+								fmt.Println(err)
+								return
+							}
+
+							fmt.Println(order)
+							client.showCurrencies("BNB", "BUSD")
+						}
+					}
+				}
+			}(input)
 		case "2":
 			klines, err := client.getKlines("LTCBTC")
 			if err != nil {
@@ -91,7 +159,7 @@ func getSeries(klines []*binance.Kline) *techan.TimeSeries {
 	series := techan.NewTimeSeries()
 
 	for _, data := range klines {
-		period := techan.NewTimePeriod(time.UnixMilli(data.OpenTime), time.Minute*5)
+		period := techan.NewTimePeriod(time.UnixMilli(data.OpenTime), time.Duration(timeframe)*time.Minute)
 
 		candle := techan.NewCandle(period)
 		candle.OpenPrice = big.NewFromString(data.Open)
@@ -101,7 +169,7 @@ func getSeries(klines []*binance.Kline) *techan.TimeSeries {
 		candle.Volume = big.NewFromString(data.Volume)
 
 		series.AddCandle(candle)
-		showInConsole(data)
+		//showInConsole(data)
 	}
 
 	return series
@@ -130,7 +198,7 @@ func (r buyRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	}
 
 	c := r.lowerBB.Calculate(len - 1)
-	if c.GTE(r.series.LastCandle().ClosePrice) {
+	if c.LTE(r.series.LastCandle().ClosePrice) {
 		return false
 	}
 
@@ -160,7 +228,7 @@ func (r sellRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	}
 
 	c := r.upperBB.Calculate(len - 1)
-	if c.LTE(r.series.LastCandle().ClosePrice) {
+	if c.GTE(r.series.LastCandle().ClosePrice) {
 		return false
 	}
 
@@ -174,13 +242,6 @@ func StrategyOne(series *techan.TimeSeries) string {
 	RSI := techan.NewRelativeStrengthIndexIndicator(closePrices, 14)
 	upperBB := techan.NewBollingerUpperBandIndicator(closePrices, 20, 2)
 	lowerBB := techan.NewBollingerLowerBandIndicator(closePrices, 20, 2)
-
-	fmt.Println(MACD.Calculate(len(series.Candles) - 2))
-	fmt.Println(MACD.Calculate(len(series.Candles) - 1))
-	fmt.Println(RSI.Calculate(len(series.Candles) - 2))
-	fmt.Println(RSI.Calculate(len(series.Candles) - 1))
-	fmt.Println(upperBB.Calculate(len(series.Candles) - 1))
-	fmt.Println(lowerBB.Calculate(len(series.Candles) - 1))
 
 	record := techan.NewTradingRecord()
 
@@ -206,6 +267,50 @@ func StrategyOne(series *techan.TimeSeries) string {
 	} else if strategy.ShouldExit(20, record) {
 		result = "Sell"
 	}
+
+	/*
+		fmt.Println("----------")
+		fmt.Println("MACD0: ", MACD.Calculate(len(series.Candles)-2))
+		fmt.Println("MACD1: ", MACD.Calculate(len(series.Candles)-1))
+		fmt.Println("RSI0: ", RSI.Calculate(len(series.Candles)-2))
+		fmt.Println("RSI1: ", RSI.Calculate(len(series.Candles)-1))
+		fmt.Println("upperBB: ", upperBB.Calculate(len(series.Candles)-1))
+		fmt.Println("lowerBB: ", lowerBB.Calculate(len(series.Candles)-1))
+		fmt.Println("Current price: ", series.LastCandle().ClosePrice.String())
+		fmt.Println(result)
+	*/
+
+	message := fmt.Sprint(
+		"----------", "\n",
+		"MACD0: ", MACD.Calculate(len(series.Candles)-2), "\n",
+		"MACD1: ", MACD.Calculate(len(series.Candles)-1), "\n",
+		"RSI0: ", RSI.Calculate(len(series.Candles)-2), "\n",
+		"RSI1: ", RSI.Calculate(len(series.Candles)-1), "\n",
+		"upperBB: ", upperBB.Calculate(len(series.Candles)-1), "\n",
+		"lowerBB: ", lowerBB.Calculate(len(series.Candles)-1), "\n",
+		"Current price: ", series.LastCandle().ClosePrice.String(), "\n",
+		"Time: ", time.Now().Format("02-01-2006 15:04:05"), "\n",
+		result, "\n",
+	)
+
+	fmt.Println(message)
+
+	file, err := os.OpenFile("./log.txt", os.O_WRONLY|os.O_APPEND, 0644)
+	if errors.Is(err, os.ErrNotExist) {
+		file, err = os.Create("./log.txt")
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	defer file.Close()
+
+	//writer := bufio.NewWriter(file)
+	_, err = file.WriteString(message)
+	if err != nil {
+		log.Fatalf("Got error while writing to a file. Err: %s", err.Error())
+	}
+
+	//writer.Flush()
 
 	return result
 }
@@ -264,7 +369,7 @@ func (client binanceClientExt) getOrders() []*binance.Order {
 
 func (client binanceClientExt) getKlines(symbol string) ([]*binance.Kline, error) {
 	klines, err := client.NewKlinesService().Symbol(symbol).
-		Interval("5m").Do(context.Background())
+		Interval(fmt.Sprint(timeframe) + "m").Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +377,6 @@ func (client binanceClientExt) getKlines(symbol string) ([]*binance.Kline, error
 	return klines, nil
 }
 
-/**/
 func (client binanceClientExt) getAccount() *binance.Account {
 	account, err := client.NewGetAccountService().Do(context.Background())
 	if err != nil {
@@ -291,4 +395,16 @@ func showInConsole(data interface{}) {
 	}
 
 	fmt.Println(string(j))
+}
+
+// Util
+func (client binanceClientExt) showCurrencies(symbol ...string) {
+	balances := client.getAccount().Balances
+	for i := range balances {
+		for _, v := range symbol {
+			if balances[i].Asset == v {
+				showInConsole(balances[i])
+			}
+		}
+	}
 }
