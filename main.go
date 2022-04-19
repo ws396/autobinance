@@ -9,19 +9,16 @@ import (
 	"os"
 	"time"
 
-	"github.com/adshao/go-binance/v2"
+	"github.com/adshao/go-binance/v2" // Might be better to eventually get rid of this dependency here
 	"github.com/joho/godotenv"
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/modules/binancew-sim"
 )
 
-type binanceClientExt struct {
-	*binance.Client
-}
-
 var (
-	timeframe = 3
-	buyAmount = 100
+	timeframe         = 3
+	buyAmount float64 = 100
 )
 
 func main() {
@@ -37,10 +34,16 @@ func main() {
 		strategyRunning = false
 	)
 
-	binance.UseTestnet = true
-	client := &binanceClientExt{binance.NewClient(apiKey, secretKey)}
+	//binance.UseTestnet = true // Interestingly enough, this also applies to all other modules, where this package is used
+	client := binancew.NewExtClient(apiKey, secretKey)
 
-	fmt.Println("1) Start strategy execution\n2) Check klines\n3) Check account\n4) Get EMA prognosis\n5) List trades")
+	fmt.Print(
+		"1) Start strategy execution", "\n",
+		"2) Check klines", "\n",
+		"3) Check account", "\n",
+		"4) Get EMA prognosis", "\n",
+		"5) List trades", "\n",
+	)
 
 	for {
 		fmt.Println("Your choice: ")
@@ -61,7 +64,7 @@ func main() {
 				fmt.Println(err)
 				return
 			}
-			showInConsole(exchangeInfo.Symbols[0].LotSizeFilter().MinQuantity)
+			showJSON(exchangeInfo.Symbols[0].LotSizeFilter().MinQuantity)
 
 			ticker := time.NewTicker(time.Duration(timeframe) * time.Minute)
 			strategyRunning = true
@@ -70,7 +73,7 @@ func main() {
 				for {
 					select {
 					case <-ticker.C:
-						klines, err := client.getKlines(input)
+						klines, err := client.GetKlines(input, timeframe)
 						if err != nil {
 							fmt.Println(err)
 							break
@@ -81,59 +84,38 @@ func main() {
 
 						switch decision {
 						case "Buy":
-							quantity := fmt.Sprintf("%f", 10/series.LastCandle().ClosePrice.Float())
-							order, err := client.NewCreateOrderService().
-								Symbol(input).
-								Side(binance.SideTypeBuy).
-								Type(binance.OrderTypeLimit). // Use market order instead?
-								TimeInForce(binance.TimeInForceTypeIOC).
-								Quantity(quantity).
-								Price(series.LastCandle().ClosePrice.String()).
-								Do(context.Background())
-							if err != nil {
-								fmt.Println(err)
-								return
-							}
-
+							quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
+							price := series.LastCandle().ClosePrice.String()
+							order := client.CreateOrder(input, quantity, price, binance.SideTypeBuy)
 							fmt.Println(order)
-							client.showCurrencies("BNB", "BUSD")
+
+							showJSON(client.GetCurrencies("BNB", "BUSD"))
 						case "Sell":
-							quantity := fmt.Sprintf("%f", 10/series.LastCandle().ClosePrice.Float())
-							order, err := client.NewCreateOrderService().
-								Symbol(input).
-								Side(binance.SideTypeSell).
-								Type(binance.OrderTypeLimit). // Use market order instead?
-								TimeInForce(binance.TimeInForceTypeIOC).
-								Quantity(quantity).
-								Price(series.LastCandle().ClosePrice.String()).
-								Do(context.Background())
-
-							if err != nil {
-								fmt.Println(err)
-								return
-							}
-
+							quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
+							price := series.LastCandle().ClosePrice.String()
+							order := client.CreateOrder(input, quantity, price, binance.SideTypeSell)
 							fmt.Println(order)
-							client.showCurrencies("BNB", "BUSD")
+
+							showJSON(client.GetCurrencies("BNB", "BUSD"))
 						}
 					}
 				}
 			}(input)
 		case "2":
-			klines, err := client.getKlines("LTCBTC")
+			klines, err := client.GetKlines("LTCBTC", timeframe)
 			if err != nil {
 				fmt.Println(err)
 				break
 			}
 
-			showInConsole(klines)
+			showJSON(klines)
 		case "3":
-			showInConsole(client.getAccount())
+			showJSON(client.GetAccount())
 		case "4":
 			fmt.Println("Select the coin symbols (ex. LTCBTC): ")
 			fmt.Scanln(&input)
 
-			klines, err := client.getKlines(input)
+			klines, err := client.GetKlines(input, timeframe)
 			if err != nil {
 				fmt.Println(err)
 				break
@@ -148,7 +130,7 @@ func main() {
 				return
 			}
 
-			showInConsole(prices)
+			showJSON(prices)
 		default:
 			fmt.Println("Invalid choice.")
 		}
@@ -169,7 +151,7 @@ func getSeries(klines []*binance.Kline) *techan.TimeSeries {
 		candle.Volume = big.NewFromString(data.Volume)
 
 		series.AddCandle(candle)
-		//showInConsole(data)
+		//showJSON(data)
 	}
 
 	return series
@@ -268,18 +250,6 @@ func StrategyOne(series *techan.TimeSeries) string {
 		result = "Sell"
 	}
 
-	/*
-		fmt.Println("----------")
-		fmt.Println("MACD0: ", MACD.Calculate(len(series.Candles)-2))
-		fmt.Println("MACD1: ", MACD.Calculate(len(series.Candles)-1))
-		fmt.Println("RSI0: ", RSI.Calculate(len(series.Candles)-2))
-		fmt.Println("RSI1: ", RSI.Calculate(len(series.Candles)-1))
-		fmt.Println("upperBB: ", upperBB.Calculate(len(series.Candles)-1))
-		fmt.Println("lowerBB: ", lowerBB.Calculate(len(series.Candles)-1))
-		fmt.Println("Current price: ", series.LastCandle().ClosePrice.String())
-		fmt.Println(result)
-	*/
-
 	message := fmt.Sprint(
 		"----------", "\n",
 		"MACD0: ", MACD.Calculate(len(series.Candles)-2), "\n",
@@ -345,49 +315,7 @@ func StrategyExample(series *techan.TimeSeries) bool {
 	return strategy.ShouldEnter(20, record)                       // Index should be > UnstablePeriod for getting true!
 }
 
-func (client binanceClientExt) getPrices() []*binance.SymbolPrice {
-	prices, err := client.NewListPricesService().Symbol("LTCBTC").
-		Do(context.Background())
-	if err != nil {
-		fmt.Println(err)
-		//return
-	}
-
-	return prices
-}
-
-func (client binanceClientExt) getOrders() []*binance.Order {
-	orders, err := client.NewListOrdersService().Symbol("LTCBTC").
-		Do(context.Background(), binance.WithRecvWindow(10000))
-	if err != nil {
-		fmt.Println(err)
-		//return
-	}
-
-	return orders
-}
-
-func (client binanceClientExt) getKlines(symbol string) ([]*binance.Kline, error) {
-	klines, err := client.NewKlinesService().Symbol(symbol).
-		Interval(fmt.Sprint(timeframe) + "m").Do(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	return klines, nil
-}
-
-func (client binanceClientExt) getAccount() *binance.Account {
-	account, err := client.NewGetAccountService().Do(context.Background())
-	if err != nil {
-		fmt.Println(err)
-		//return
-	}
-
-	return account
-}
-
-func showInConsole(data interface{}) {
+func showJSON(data interface{}) {
 	j, err := json.MarshalIndent(data, "", "    🐱") // 🐱🐱🐱🐱🐱🐱🐱🐱!!
 	if err != nil {
 		fmt.Println(err)
@@ -395,16 +323,4 @@ func showInConsole(data interface{}) {
 	}
 
 	fmt.Println(string(j))
-}
-
-// Util
-func (client binanceClientExt) showCurrencies(symbol ...string) {
-	balances := client.getAccount().Balances
-	for i := range balances {
-		for _, v := range symbol {
-			if balances[i].Asset == v {
-				showInConsole(balances[i])
-			}
-		}
-	}
 }
