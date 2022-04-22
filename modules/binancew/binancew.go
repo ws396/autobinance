@@ -9,6 +9,7 @@ import (
 
 type ClientExt struct {
 	*binance.Client
+	placedOrders []bool
 }
 
 func init() {
@@ -16,7 +17,7 @@ func init() {
 }
 
 func NewExtClient(apiKey, secretKey string) *ClientExt {
-	return &ClientExt{binance.NewClient(apiKey, secretKey)}
+	return &ClientExt{binance.NewClient(apiKey, secretKey), []bool{}}
 }
 
 func (client *ClientExt) GetPrices() []*binance.SymbolPrice {

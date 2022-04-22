@@ -10,8 +10,9 @@ import (
 
 type ClientExt struct {
 	*binance.Client
-	walletBUSD  float64
-	walletOther float64
+	PlacedOrders map[string]bool
+	walletBUSD   float64
+	walletOther  map[string]float64
 }
 
 func init() {
@@ -19,7 +20,7 @@ func init() {
 }
 
 func NewExtClient(apiKey, secretKey string) *ClientExt {
-	return &ClientExt{binance.NewClient("", ""), 100, 0}
+	return &ClientExt{binance.NewClient("", ""), map[string]bool{}, 100, map[string]float64{}}
 }
 
 func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
@@ -33,7 +34,7 @@ func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
 	return prices
 }
 
-func (client *ClientExt) CreateOrder(input, quantity, price string, orderType binance.SideType) string {
+func (client *ClientExt) CreateOrder(symbol, quantity, price string, orderType binance.SideType) string {
 	q, err := strconv.ParseFloat(quantity, 64)
 	if err != nil {
 		fmt.Println(err)
@@ -48,13 +49,15 @@ func (client *ClientExt) CreateOrder(input, quantity, price string, orderType bi
 
 	if orderType == binance.SideTypeBuy {
 		client.walletBUSD -= q * p
-		client.walletOther += q
+		client.walletOther[symbol] += q
+		client.PlacedOrders[symbol] = true
 	} else if orderType == binance.SideTypeSell {
 		client.walletBUSD += q * p
-		client.walletOther -= q
+		client.walletOther[symbol] -= q
+		client.PlacedOrders[symbol] = false
 	}
 
-	return fmt.Sprint("BUSD: ", client.walletBUSD, "\n", "BNB: ", client.walletOther)
+	return fmt.Sprint("BUSD: ", client.walletBUSD, "\n", symbol, ": ", client.walletOther[symbol])
 }
 
 func (client *ClientExt) GetOrders() []*binance.Order {
