@@ -6,7 +6,7 @@ import (
 
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
-	"github.com/ws396/autobinance/modules/util"
+	"github.com/ws396/autobinance/modules/output"
 )
 
 type buyRuleOne struct {
@@ -51,18 +51,18 @@ func (r sellRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 
 	a0 := r.MACD.Calculate(len - 2)
 	a1 := r.MACD.Calculate(len - 1)
-	if a1.LT(big.NewFromInt(0)) || a1.GTE(a0) {
+	if a1.LT(big.NewFromInt(0)) || a1.GT(a0) {
 		return false
 	}
 
 	b0 := r.RSI.Calculate(len - 2)
 	b1 := r.RSI.Calculate(len - 1)
-	if b1.LT(big.NewFromInt(66)) || b1.GTE(b0) {
+	if b1.LT(big.NewFromInt(66)) || b1.GT(b0) {
 		return false
 	}
 
 	c := r.upperBB.Calculate(len - 1)
-	if c.GTE(r.series.LastCandle().ClosePrice) {
+	if c.GT(r.series.LastCandle().ClosePrice) {
 		return false
 	}
 
@@ -110,24 +110,32 @@ func StrategyOne(symbol string, series *techan.TimeSeries, placedOrders *map[str
 		return ""
 	}
 
+	data := map[string]string{
+		"MACD0":         MACD.Calculate(len(series.Candles) - 2).String(),
+		"MACD1":         MACD.Calculate(len(series.Candles) - 1).String(),
+		"RSI0":          RSI.Calculate(len(series.Candles) - 2).String(),
+		"RSI1":          RSI.Calculate(len(series.Candles) - 1).String(),
+		"upperBB":       upperBB.Calculate(len(series.Candles) - 1).String(),
+		"lowerBB":       lowerBB.Calculate(len(series.Candles) - 1).String(),
+		"Current price": series.LastCandle().ClosePrice.String(),
+		"Time":          time.Now().Format("02-01-2006 15:04:05"),
+		"Symbol":        symbol,
+		"Decision":      result,
+	}
+
 	message := fmt.Sprint(
 		"----------", "\n",
-		"MACD0: ", MACD.Calculate(len(series.Candles)-2), "\n",
-		"MACD1: ", MACD.Calculate(len(series.Candles)-1), "\n",
-		"RSI0: ", RSI.Calculate(len(series.Candles)-2), "\n",
-		"RSI1: ", RSI.Calculate(len(series.Candles)-1), "\n",
-		"upperBB: ", upperBB.Calculate(len(series.Candles)-1), "\n",
-		"lowerBB: ", lowerBB.Calculate(len(series.Candles)-1), "\n",
-		"Current price: ", series.LastCandle().ClosePrice.String(), "\n",
-		"Time: ", time.Now().Format("02-01-2006 15:04:05"), "\n",
-		"Symbol: ", symbol, "\n",
-		result, "\n",
 	)
+	for k, v := range data {
+		message += fmt.Sprint(k, ": ", v, "\n")
+	}
 
 	fmt.Println(message)
 
 	if result != "Hold" {
-		util.WriteToLog(message)
+		writerType := output.Txt
+		writer := output.NewWriterCreator().CreateWriter(writerType)
+		writer.WriteToLog(data)
 	}
 
 	return result

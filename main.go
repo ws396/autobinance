@@ -13,6 +13,7 @@ import (
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/modules/binancew-sim"
+	"github.com/ws396/autobinance/modules/output"
 	"github.com/ws396/autobinance/modules/strategies"
 	"github.com/ws396/autobinance/modules/util"
 )
@@ -44,6 +45,7 @@ func main() {
 		"3) Check account", "\n",
 		"4) Get EMA prognosis", "\n",
 		"5) List trades", "\n",
+		"6) Test things", "\n",
 	)
 
 	for {
@@ -134,6 +136,12 @@ func main() {
 			}
 
 			util.ShowJSON(prices)
+		case "6":
+			writer := output.NewWriterCreator().CreateWriter(output.Excel)
+			writer.WriteToLog(map[string]string{
+				"MACD0": "MACD051235",
+				"MACD1": "MACD512351231",
+			})
 		default:
 			fmt.Println("Invalid choice.")
 		}
