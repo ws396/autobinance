@@ -1,0 +1,29 @@
+version: "3.9"
+services:
+  app:
+    build:
+      dockerfile: Dockerfile
+      context: .
+      target: dev
+    volumes:
+      - .:/opt/app/api
+
+  postgres:
+    container_name: postgres-autobinance
+    image: postgres:14.1
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: ${PGSQL_HOST}
+      POSTGRES_DB: ${PGSQL_DB}
+      POSTGRES_USER: ${PGSQL_USER}
+      POSTGRES_PASSWORD: ${PGSQL_PASS}
+      POSTGRES_PORT: ${PGSQL_PORT}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - 5433:5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

@@ -121,6 +121,7 @@ func StrategyOne(symbol string, series *techan.TimeSeries, placedOrders *map[str
 		"Time":          time.Now().Format("02-01-2006 15:04:05"),
 		"Symbol":        symbol,
 		"Decision":      result,
+		"Strategy":      "one",
 	}
 
 	message := fmt.Sprint(
