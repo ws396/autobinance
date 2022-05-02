@@ -11,6 +11,7 @@ import (
 
 // Looking a bit too prematurely convoluted, but let's try to do this the "right" way :^)
 // https://github.com/AlexanderGrom/go-patterns/blob/master/Creational/FactoryMethod/factory_method.go
+
 type action string
 
 const (
@@ -23,7 +24,7 @@ type Creator interface {
 }
 
 type Writer interface {
-	WriteToLog(map[string]string)
+	WriteToLog(map[string]string, *[]string)
 }
 
 type ConcreteWriterCreator struct {
@@ -51,12 +52,12 @@ func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
 type TxtWriter struct {
 }
 
-func (p *TxtWriter) WriteToLog(data map[string]string) {
+func (p *TxtWriter) WriteToLog(data map[string]string, dataKeys *[]string) {
 	f, err := os.OpenFile("log.txt", os.O_WRONLY|os.O_APPEND, 0644)
 	if errors.Is(err, os.ErrNotExist) {
 		f, err = os.Create("log.txt")
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalln(err)
 			return
 		}
 	}
@@ -65,8 +66,8 @@ func (p *TxtWriter) WriteToLog(data map[string]string) {
 	message := fmt.Sprint(
 		"----------", "\n",
 	)
-	for k, v := range data {
-		message += fmt.Sprint(k, ": ", v, "\n")
+	for _, v := range *dataKeys {
+		message += fmt.Sprint(v, ": ", data[v], "\n")
 	}
 	_, err = f.WriteString(message)
 	if err != nil {
@@ -77,7 +78,7 @@ func (p *TxtWriter) WriteToLog(data map[string]string) {
 type ExcelWriter struct {
 }
 
-func (p *ExcelWriter) WriteToLog(data map[string]string) {
+func (p *ExcelWriter) WriteToLog(data map[string]string, dataKeys *[]string) {
 	f, err := excelize.OpenFile("log.xlsx")
 	if errors.Is(err, os.ErrNotExist) {
 		f = excelize.NewFile()
@@ -89,19 +90,19 @@ func (p *ExcelWriter) WriteToLog(data map[string]string) {
 		}
 
 		if err := f.SaveAs("log.xlsx"); err != nil {
-			fmt.Println(err)
+			log.Panicln(err)
 			return
 		}
 
 		f, err = excelize.OpenFile("log.xlsx")
 		if err != nil {
-			fmt.Println(err)
+			log.Panicln(err)
 			return
 		}
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			fmt.Println(err)
+			log.Panicln(err)
 		}
 	}()
 
@@ -109,7 +110,7 @@ func (p *ExcelWriter) WriteToLog(data map[string]string) {
 	lastRow := fmt.Sprint(len(rows) + 1)
 
 	i := 0
-	for _, v := range rows[0] {
+	for _, v := range *dataKeys {
 		f.SetCellValue("Sheet1", string(rune('A'+i))+lastRow, data[v])
 		i++
 	}

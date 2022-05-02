@@ -1,14 +1,32 @@
 package strategies
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/modules/db"
+	"github.com/ws396/autobinance/modules/orders"
 	"github.com/ws396/autobinance/modules/output"
 	"github.com/ws396/autobinance/modules/techanext"
 )
+
+var DataKeysTwo = []string{
+	"MACD0",
+	"MACD1",
+	"stochRSI0",
+	"stochRSI1",
+	"upperBB",
+	"lowerBB",
+	"Current price",
+	"Time",
+	"Symbol",
+	"Decision",
+	"Strategy",
+}
 
 type buyRuleTwo struct {
 	MACD     techan.Indicator
@@ -128,16 +146,39 @@ func StrategyTwo(symbol string, series *techan.TimeSeries, placedOrders *map[str
 	message := fmt.Sprint(
 		"----------", "\n",
 	)
-	for k, v := range data {
-		message += fmt.Sprint(k, ": ", v, "\n")
+	for _, v := range DataKeysTwo {
+		message += fmt.Sprint(v, ": ", data[v], "\n")
 	}
 
 	fmt.Println(message)
 
+	indicators, err := json.Marshal(map[string]string{
+		"MACD0":   data["MACD0"],
+		"MACD1":   data["MACD1"],
+		"RSI0":    data["RSI0"],
+		"RSI1":    data["RSI1"],
+		"upperBB": data["upperBB"],
+		"lowerBB": data["lowerBB"],
+	})
+	if err != nil {
+		log.Panicln(err)
+	}
+
+	r := db.Client.Table("orders").Create(&orders.Order{
+		Symbol:     data["Symbol"],
+		Strategy:   "one",
+		Decision:   data["Decision"],
+		Price:      series.LastCandle().ClosePrice.Float(),
+		Indicators: string(indicators),
+	})
+	if r.Error != nil {
+		log.Panicln(r.Error)
+	}
+
 	if result != "Hold" {
 		writerType := output.Txt
 		writer := output.NewWriterCreator().CreateWriter(writerType)
-		writer.WriteToLog(data)
+		writer.WriteToLog(data, &DataKeysTwo)
 	}
 
 	return result

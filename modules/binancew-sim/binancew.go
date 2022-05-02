@@ -3,6 +3,7 @@ package binancew
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
 
 	"github.com/adshao/go-binance/v2"
@@ -27,7 +28,7 @@ func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
 	prices, err := client.NewListPricesService().Symbol("LTCBTC").
 		Do(context.Background())
 	if err != nil {
-		fmt.Println(err)
+		log.Panicln(err)
 		//return
 	}
 
@@ -37,13 +38,13 @@ func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
 func (client *ClientExt) CreateOrder(symbol, quantity, price string, orderType binance.SideType) string {
 	q, err := strconv.ParseFloat(quantity, 64)
 	if err != nil {
-		fmt.Println(err)
+		log.Panicln(err)
 		return ""
 	}
 
 	p, err := strconv.ParseFloat(price, 64)
 	if err != nil {
-		fmt.Println(err)
+		log.Panicln(err)
 		return ""
 	}
 
@@ -64,7 +65,7 @@ func (client *ClientExt) GetOrders() []*binance.Order {
 	orders, err := client.NewListOrdersService().Symbol("LTCBTC").
 		Do(context.Background(), binance.WithRecvWindow(10000))
 	if err != nil {
-		fmt.Println(err)
+		log.Panicln(err)
 		//return
 	}
 
@@ -84,7 +85,7 @@ func (client *ClientExt) GetKlines(symbol string, timeframe int) ([]*binance.Kli
 func (client *ClientExt) GetAccount() *binance.Account {
 	account, err := client.NewGetAccountService().Do(context.Background())
 	if err != nil {
-		fmt.Println(err)
+		log.Panicln(err)
 		//return
 	}
 

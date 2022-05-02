@@ -14,25 +14,29 @@ import (
 	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/modules/binancew-sim"
 	"github.com/ws396/autobinance/modules/db"
+	"github.com/ws396/autobinance/modules/orders"
 	"github.com/ws396/autobinance/modules/settings"
 	"github.com/ws396/autobinance/modules/strategies"
 	"github.com/ws396/autobinance/modules/util"
 )
 
 var (
-	timeframe         = 3
+	timeframe int     = 3
 	buyAmount float64 = 50
 )
 
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("Error loading .env file")
+		log.Panicln("Error loading .env file")
 	}
 
 	db.ConnectDB()
 	strategies.AutoMigrateAnalyses()
 	settings.AutoMigrateSettings()
+	orders.AutoMigrateOrders()
+
+	strategies.Timeframe = &timeframe
 
 	var (
 		apiKey              = os.Getenv("API_KEY")
@@ -68,132 +72,88 @@ func main() {
 				break
 			}
 
-			fmt.Println("Select the coin symbols for Strategy One (ex. BNBBUSD,BTCBUSD): ")
-			fmt.Scanln(&input)
-			symbols := strings.Split(input, ",")
-			for i := range symbols {
-				symbols[i] = strings.Trim(symbols[i], " ") // fmt.Scanln doesn't work well with whitespaces anyway (use bufio.Scanner?)
-				client.PlacedOrders[symbols[i]] = false
-			}
-
 			var foundStrategies settings.Setting
-			r := db.Client.Table("settings").First(&foundStrategies, "name = selected_strategies")
-			if r.Error != nil {
-				fmt.Println(r.Error)
+			r := db.Client.Table("settings").First(&foundStrategies, "name = ?", "selected_strategies")
+			if r.Error != nil && !r.RecordNotFound() {
+				log.Panicln(r.Error)
 			}
 			if r.RecordNotFound() {
-				fmt.Println("err: no selected strategies could be found")
-				break
+				fmt.Println("Please specify the strategies first")
 			}
 
 			selectedStrategies := strings.Split(foundStrategies.Value, ",")
+
+			var foundSymbols settings.Setting
+			r = db.Client.Table("settings").First(&foundSymbols, "name = ?", "selected_symbols")
+			if r.Error != nil && !r.RecordNotFound() {
+				log.Panicln(r.Error)
+			}
+			if r.RecordNotFound() {
+				fmt.Println("Please specify the settings first")
+			}
+
+			selectedSymbols := strings.Split(foundSymbols.Value, ",")
+			for i := range selectedSymbols {
+				client.PlacedOrders[selectedSymbols[i]] = false
+			}
 
 			ticker := time.NewTicker(time.Duration(timeframe) * time.Minute)
 			fmt.Println("Strategy execution started (you can still do other actions)")
 			strategyRunning = true
 
-			go func(symbols []string) {
+			go func(selectedSymbols []string) {
 				for {
 					select {
 					case <-ticker.C:
 						for _, strategy := range selectedStrategies {
-							for _, symbol := range symbols {
+							for _, symbol := range selectedSymbols {
 								klines, err := client.GetKlines(symbol, timeframe)
 								if err != nil {
-									fmt.Println(err)
+									log.Panicln(err)
 									break
 								}
 
 								series := getSeries(klines)
-								//decision := strategies.StrategyOne(symbol, series, &client.PlacedOrders)
-								//decision := strategies.StrategyTwo(symbol, series, &client.PlacedOrders)
+
 								decision := availableStrategies[strategy](symbol, series, &client.PlacedOrders)
+								price := series.LastCandle().ClosePrice.String()
 
 								switch decision {
 								case "Buy":
 									quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
-									price := series.LastCandle().ClosePrice.String()
 									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
 									fmt.Println(order)
 
 									util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
+									strategies.UpdateOrCreateAnalysis(strategy, symbol, decision, buyAmount)
 								case "Sell":
-									quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
-									price := series.LastCandle().ClosePrice.String()
+									var foundOrder orders.Order
+									r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
+									if r.Error != nil && !r.RecordNotFound() {
+										log.Panicln(r.Error)
+										return
+									}
+
+									quantity := fmt.Sprint(foundOrder.Quantity)
 									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
 									fmt.Println(order)
 
 									util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
-								}
-
-								// Should be after order is made...or should it? It's the analysis that matters after all, not the fact of the order.
-								var foundAnalysis strategies.Analysis
-								r := db.Client.Table("analyses").First(&foundAnalysis, "strategyName = ? AND symbol = ?", strategy, symbol)
-								if r.Error != nil {
-									fmt.Println(r.Error)
-								}
-								if r.RowsAffected == 0 {
-									r = db.Client.Table("analyses").Create(strategies.Analysis{
-										StrategyName:    strategy,
-										Symbol:          symbol,
-										Buys:            0,
-										Sells:           0,
-										SuccessfulSells: 0,
-										ProfitUSD:       0,
-										SuccessRate:     0,
-										ActiveTime:      0,
-									})
-									if r.Error != nil {
-										fmt.Println(r.Error)
-									}
-								} else {
-									if decision == "Buy" {
-										foundAnalysis.Buys += 1
-									} else if decision == "Sell" {
-										foundAnalysis.Sells += 1
-									}
-
-									db.Client.Table("analyses").Save(&foundAnalysis)
+									strategies.UpdateOrCreateAnalysis(strategy, symbol, decision, buyAmount)
 								}
 							}
 						}
 					}
 				}
-			}(symbols)
-		case "2": // Could these two cases be somehow reasonably unified?
-			var foundSetting settings.Setting
-			r := db.Client.Table("settings").FirstOrCreate(&foundSetting, "name = ?", "selected_strategies")
-			if r.Error != nil {
-				fmt.Println(r.Error)
-			}
-
-			fmt.Println("Currently selected strategies: ", foundSetting.Value)
-			fmt.Println("Set the strategies to execute: ")
-			fmt.Scanln(&input)
-
-			if !r.RecordNotFound() {
-				foundSetting.Value = input
-				db.Client.Table("settings").Save(&foundSetting)
-			}
+			}(selectedSymbols)
+		case "2":
+			settings.ScanUpdateOrCreate("selected_strategies")
 		case "3":
-			var foundSetting settings.Setting
-			r := db.Client.Table("settings").FirstOrCreate(&foundSetting, "name = selected_symbols")
-			if r.Error != nil {
-				fmt.Println(r.Error)
-			}
-
-			fmt.Println("Currently selected symbols: ", foundSetting.Value)
-			fmt.Println("Set the symbols to trade on: ")
-			fmt.Scanln(&input)
-
-			if !r.RecordNotFound() {
-				foundSetting.Value = input
-				db.Client.Table("settings").Save(&foundSetting)
-			}
+			settings.ScanUpdateOrCreate("selected_symbols")
 		case "4":
 			klines, err := client.GetKlines("LTCBTC", timeframe)
 			if err != nil {
-				fmt.Println(err)
+				log.Panicln(err)
 				break
 			}
 
@@ -203,7 +163,7 @@ func main() {
 		case "6":
 			prices, err := client.NewListPricesService().Do(context.Background())
 			if err != nil {
-				fmt.Println(err)
+				log.Panicln(err)
 				return
 			}
 
@@ -228,7 +188,6 @@ func getSeries(klines []*binance.Kline) *techan.TimeSeries {
 		candle.Volume = big.NewFromString(data.Volume)
 
 		series.AddCandle(candle)
-		//util.ShowJSON(data)
 	}
 
 	return series

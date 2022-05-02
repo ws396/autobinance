@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/jinzhu/gorm"
@@ -19,7 +20,7 @@ func ConnectDB() {
 		os.Getenv("PGSQL_PASS"),
 	))
 	if err != nil {
-		panic(err)
+		log.Panicln(err)
 	}
 
 	Client = database
