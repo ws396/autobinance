@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/ws396/autobinance/modules/binancew-sim"
 	"github.com/ws396/autobinance/modules/db"
 	"github.com/ws396/autobinance/modules/orders"
+	"github.com/ws396/autobinance/modules/output"
 	"github.com/ws396/autobinance/modules/settings"
 	"github.com/ws396/autobinance/modules/strategies"
 	"github.com/ws396/autobinance/modules/util"
@@ -43,9 +45,10 @@ func main() {
 		secretKey           = os.Getenv("SECRET_KEY")
 		input               string
 		strategyRunning     = false
-		availableStrategies = map[string]func(string, *techan.TimeSeries, *map[string]bool) string{
+		availableStrategies = map[string]func(string, *techan.TimeSeries, *map[string]bool) (string, map[string]string){
 			"one": strategies.StrategyOne,
 			"two": strategies.StrategyTwo,
+			"ytwilliams": strategies.StrategyYTWilliams,
 		}
 	)
 
@@ -114,9 +117,10 @@ func main() {
 								}
 
 								series := getSeries(klines)
-
-								decision := availableStrategies[strategy](symbol, series, &client.PlacedOrders)
+								decision, indicators := availableStrategies[strategy](symbol, series, &client.PlacedOrders)
 								price := series.LastCandle().ClosePrice.String()
+
+								var quantity float64
 
 								switch decision {
 								case "Buy":
@@ -125,7 +129,6 @@ func main() {
 									fmt.Println(order)
 
 									util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
-									strategies.UpdateOrCreateAnalysis(strategy, symbol, decision, buyAmount)
 								case "Sell":
 									var foundOrder orders.Order
 									r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
@@ -139,8 +142,52 @@ func main() {
 									fmt.Println(order)
 
 									util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
-									strategies.UpdateOrCreateAnalysis(strategy, symbol, decision, buyAmount)
 								}
+
+								indicatorsJSON, err := json.Marshal(indicators)
+								if err != nil {
+									log.Panicln(err)
+								}
+
+								//var order *orders.Order
+								order := &orders.Order{
+									Symbol:     symbol,
+									Strategy:   strategy,
+									Decision:   decision,
+									Quantity:   quantity,
+									Price:      series.LastCandle().ClosePrice.Float() * quantity,
+									Indicators: string(indicatorsJSON),
+								}
+								if decision != "Hold" {
+									r := db.Client.Table("orders").Create(order)
+									if r.Error != nil {
+										log.Panicln(r.Error)
+									}
+								}
+
+								data := indicators
+								data["Current price"] = series.LastCandle().ClosePrice.String()
+								data["Time"] = time.Now().Format("02-01-2006 15:04:05")
+								data["Symbol"] = symbol
+								data["Decision"] = decision
+								data["Strategy"] = strategy
+
+								message := fmt.Sprint(
+									"----------", "\n",
+								)
+								for _, v := range *strategies.Datakeys[strategy] {
+									message += fmt.Sprint(v, ": ", data[v], "\n")
+								}
+
+								fmt.Println(message)
+
+								if decision != "Hold" {
+									writerType := output.Txt
+									writer := output.NewWriterCreator().CreateWriter(writerType)
+									writer.WriteToLog(data, strategies.Datakeys[strategy])
+								}
+
+								strategies.UpdateOrCreateAnalysis(order)
 							}
 						}
 					}

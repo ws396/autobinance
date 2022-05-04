@@ -1,21 +1,40 @@
 package strategies
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/modules/techanext"
 )
 
-type buyRuleOne struct {
+type buyRuleYTWilliams struct {
 	MACD    techan.Indicator
 	RSI     techan.Indicator
 	lowerBB techan.Indicator
 	series  *techan.TimeSeries
 }
 
-func (r buyRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
+func (r buyRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) bool {
+	// cinar/indicator
+	/*
+		var lowSlice, highSlice, closingSlice []float64
+		williamsRlen := 21
+		start := len(r.series.Candles) - williamsRlen //- 1
+
+		for i := 0; i < williamsRlen; i++ {
+			lowSlice = append(lowSlice, r.series.Candles[start+i].MinPrice.Float())
+			highSlice = append(highSlice, r.series.Candles[start+i].MaxPrice.Float())
+			closingSlice = append(closingSlice, r.series.Candles[start+i].ClosePrice.Float())
+		}
+
+		d := indicator.WilliamsR(lowSlice, highSlice, closingSlice) // This function actually has a hardcoded 14 period for some reason......
+	*/
+	d := techanext.NewWilliamsRIndicator(r.series, 21)
+
 	l := len(r.series.Candles)
+	fmt.Println(d.Calculate(l - 1))
 
 	a0 := r.MACD.Calculate(l - 2)
 	a1 := r.MACD.Calculate(l - 1)
@@ -37,14 +56,14 @@ func (r buyRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	return true
 }
 
-type sellRuleOne struct {
+type sellRuleYTWilliams struct {
 	MACD    techan.Indicator
 	RSI     techan.Indicator
 	upperBB techan.Indicator
 	series  *techan.TimeSeries
 }
 
-func (r sellRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
+func (r sellRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	l := len(r.series.Candles)
 
 	a0 := r.MACD.Calculate(l - 2)
@@ -67,7 +86,7 @@ func (r sellRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	return true
 }
 
-func StrategyOne(symbol string, series *techan.TimeSeries, placedOrders *map[string]bool) (string, map[string]string) {
+func StrategyYTWilliams(symbol string, series *techan.TimeSeries, placedOrders *map[string]bool) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 
 	MACD := techan.NewMACDIndicator(closePrices, 12, 26)
@@ -78,12 +97,12 @@ func StrategyOne(symbol string, series *techan.TimeSeries, placedOrders *map[str
 	record := techan.NewTradingRecord()
 
 	entryRule := techan.And(
-		buyRuleOne{MACD, RSI, lowerBB, series},
+		buyRuleYTWilliams{MACD, RSI, lowerBB, series},
 		techan.PositionNewRule{},
 	)
 
 	exitRule := techan.And(
-		sellRuleOne{MACD, RSI, upperBB, series},
+		sellRuleYTWilliams{MACD, RSI, upperBB, series},
 		techan.PositionOpenRule{},
 	)
 

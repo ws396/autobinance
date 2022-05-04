@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/adshao/go-binance/v2 v2.3.5
+	github.com/cinar/indicator v1.2.14
 	github.com/jinzhu/gorm v1.9.16
 	github.com/joho/godotenv v1.4.0
 	github.com/sdcoffey/big v0.7.0

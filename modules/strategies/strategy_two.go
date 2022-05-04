@@ -1,32 +1,12 @@
 package strategies
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
-	"time"
 
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
-	"github.com/ws396/autobinance/modules/db"
-	"github.com/ws396/autobinance/modules/orders"
-	"github.com/ws396/autobinance/modules/output"
 	"github.com/ws396/autobinance/modules/techanext"
 )
-
-var DataKeysTwo = []string{
-	"MACD0",
-	"MACD1",
-	"stochRSI0",
-	"stochRSI1",
-	"upperBB",
-	"lowerBB",
-	"Current price",
-	"Time",
-	"Symbol",
-	"Decision",
-	"Strategy",
-}
 
 type buyRuleTwo struct {
 	MACD     techan.Indicator
@@ -36,21 +16,21 @@ type buyRuleTwo struct {
 }
 
 func (r buyRuleTwo) IsSatisfied(index int, record *techan.TradingRecord) bool {
-	len := len(r.series.Candles)
+	l := len(r.series.Candles)
 
-	//a0 := r.MACD.Calculate(len - 2)
-	a1 := r.MACD.Calculate(len - 1)
+	//a0 := r.MACD.Calculate(l - 2)
+	a1 := r.MACD.Calculate(l - 1)
 	if a1.GT(big.NewFromInt(0)) /*|| a1.LTE(a0)*/ {
 		return false
 	}
 
-	b0 := r.stochRSI.Calculate(len - 2)
-	b1 := r.stochRSI.Calculate(len - 1)
+	b0 := r.stochRSI.Calculate(l - 2)
+	b1 := r.stochRSI.Calculate(l - 1)
 	if b1.GT(big.NewFromInt(20)) || b1.LTE(b0) {
 		return false
 	}
 
-	c := r.lowerBB.Calculate(len - 1)
+	c := r.lowerBB.Calculate(l - 1)
 	if c.LTE(r.series.LastCandle().ClosePrice) {
 		return false
 	}
@@ -66,21 +46,21 @@ type sellRuleTwo struct {
 }
 
 func (r sellRuleTwo) IsSatisfied(index int, record *techan.TradingRecord) bool {
-	len := len(r.series.Candles)
+	l := len(r.series.Candles)
 
-	//a0 := r.MACD.Calculate(len - 2)
-	a1 := r.MACD.Calculate(len - 1)
+	//a0 := r.MACD.Calculate(l - 2)
+	a1 := r.MACD.Calculate(l - 1)
 	if a1.LT(big.NewFromInt(0)) /*|| a1.GT(a0)*/ {
 		return false
 	}
 
-	b0 := r.stochRSI.Calculate(len - 2)
-	b1 := r.stochRSI.Calculate(len - 1)
+	b0 := r.stochRSI.Calculate(l - 2)
+	b1 := r.stochRSI.Calculate(l - 1)
 	if b1.LT(big.NewFromInt(80)) || b1.GT(b0) {
 		return false
 	}
 
-	c := r.upperBB.Calculate(len - 1)
+	c := r.upperBB.Calculate(l - 1)
 	if c.GT(r.series.LastCandle().ClosePrice) {
 		return false
 	}
@@ -88,7 +68,7 @@ func (r sellRuleTwo) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	return true
 }
 
-func StrategyTwo(symbol string, series *techan.TimeSeries, placedOrders *map[string]bool) string {
+func StrategyTwo(symbol string, series *techan.TimeSeries, placedOrders *map[string]bool) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 
 	MACD := techan.NewMACDIndicator(closePrices, 12, 26)
@@ -123,63 +103,20 @@ func StrategyTwo(symbol string, series *techan.TimeSeries, placedOrders *map[str
 
 	if !(*placedOrders)[symbol] && result == "Sell" {
 		fmt.Println("err: no buy has been done on this symbol to initiate sell")
-		return ""
+		return "", nil
 	} else if (*placedOrders)[symbol] && result == "Buy" {
 		fmt.Println("err: this position is already bought")
-		return ""
+		return "", nil
 	}
 
-	data := map[string]string{
-		"MACD0":         MACD.Calculate(len(series.Candles) - 2).String(),
-		"MACD1":         MACD.Calculate(len(series.Candles) - 1).String(),
-		"stochRSI0":     stochRSI.Calculate(len(series.Candles) - 2).String(),
-		"stochRSI1":     stochRSI.Calculate(len(series.Candles) - 1).String(),
-		"upperBB":       upperBB.Calculate(len(series.Candles) - 1).String(),
-		"lowerBB":       lowerBB.Calculate(len(series.Candles) - 1).String(),
-		"Current price": series.LastCandle().ClosePrice.String(),
-		"Time":          time.Now().Format("02-01-2006 15:04:05"),
-		"Symbol":        symbol,
-		"Decision":      result,
-		"Strategy":      "two",
+	indicators := map[string]string{
+		"MACD0":     MACD.Calculate(len(series.Candles) - 2).String(),
+		"MACD1":     MACD.Calculate(len(series.Candles) - 1).String(),
+		"stochRSI0": stochRSI.Calculate(len(series.Candles) - 2).String(),
+		"stochRSI1": stochRSI.Calculate(len(series.Candles) - 1).String(),
+		"upperBB":   upperBB.Calculate(len(series.Candles) - 1).String(),
+		"lowerBB":   lowerBB.Calculate(len(series.Candles) - 1).String(),
 	}
 
-	message := fmt.Sprint(
-		"----------", "\n",
-	)
-	for _, v := range DataKeysTwo {
-		message += fmt.Sprint(v, ": ", data[v], "\n")
-	}
-
-	fmt.Println(message)
-
-	indicators, err := json.Marshal(map[string]string{
-		"MACD0":   data["MACD0"],
-		"MACD1":   data["MACD1"],
-		"RSI0":    data["RSI0"],
-		"RSI1":    data["RSI1"],
-		"upperBB": data["upperBB"],
-		"lowerBB": data["lowerBB"],
-	})
-	if err != nil {
-		log.Panicln(err)
-	}
-
-	r := db.Client.Table("orders").Create(&orders.Order{
-		Symbol:     data["Symbol"],
-		Strategy:   "one",
-		Decision:   data["Decision"],
-		Price:      series.LastCandle().ClosePrice.Float(),
-		Indicators: string(indicators),
-	})
-	if r.Error != nil {
-		log.Panicln(r.Error)
-	}
-
-	if result != "Hold" {
-		writerType := output.Txt
-		writer := output.NewWriterCreator().CreateWriter(writerType)
-		writer.WriteToLog(data, &DataKeysTwo)
-	}
-
-	return result
+	return result, indicators
 }

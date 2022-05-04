@@ -30,37 +30,37 @@ func AutoMigrateAnalyses() {
 	db.Client.AutoMigrate(&Analysis{})
 }
 
-func UpdateOrCreateAnalysis(strategy, symbol, decision string, price float64) {
+func UpdateOrCreateAnalysis(order *orders.Order) {
 	var foundAnalysis Analysis
-	r := db.Client.Table("analyses").First(&foundAnalysis, "strategy = ? AND symbol = ?", strategy, symbol)
+	r := db.Client.Table("analyses").First(&foundAnalysis, "strategy = ? AND symbol = ?", order.Strategy, order.Symbol)
 	if r.Error != nil && !r.RecordNotFound() {
 		log.Panicln(r.Error)
 	}
 	if r.RecordNotFound() {
-		if decision == "Buy" {
-			CreateAnalysis(strategy, symbol, price)
-		} else {
+		if order.Decision == "Buy" {
+			CreateAnalysis(order.Strategy, order.Symbol, order.Price)
+		} else if order.Decision == "Sell" {
 			log.Panicln("err: the first order type of symbol should always be buy")
 		}
 	} else {
-		if decision == "Buy" {
+		if order.Decision == "Buy" {
 			foundAnalysis.Buys += 1
-			foundAnalysis.ProfitUSD -= price
-		} else if decision == "Sell" {
+			foundAnalysis.ProfitUSD -= order.Price
+		} else if order.Decision == "Sell" {
 			foundAnalysis.Sells += 1
 
 			var foundOrder orders.Order
-			r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
+			r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", order.Strategy, order.Symbol, "Buy")
 			if r.Error != nil && !r.RecordNotFound() {
 				log.Panicln(r.Error)
 				return
 			}
 
-			if foundOrder.Price < price {
+			if foundOrder.Price < order.Price {
 				foundAnalysis.SuccessfulSells += 1
 			}
 
-			foundAnalysis.ProfitUSD += price
+			foundAnalysis.ProfitUSD += order.Price
 			foundAnalysis.SuccessRate = float64(foundAnalysis.SuccessfulSells / foundAnalysis.Sells)
 		}
 
