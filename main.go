@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	timeframe int     = 3
+	timeframe int     = 1
 	buyAmount float64 = 50
 )
 
@@ -45,9 +45,9 @@ func main() {
 		secretKey           = os.Getenv("SECRET_KEY")
 		input               string
 		strategyRunning     = false
-		availableStrategies = map[string]func(string, *techan.TimeSeries, *map[string]bool) (string, map[string]string){
-			"one": strategies.StrategyOne,
-			"two": strategies.StrategyTwo,
+		availableStrategies = map[string]func(string, *techan.TimeSeries) (string, map[string]string){
+			"one":        strategies.StrategyOne,
+			"two":        strategies.StrategyTwo,
 			"ytwilliams": strategies.StrategyYTWilliams,
 		}
 	)
@@ -96,9 +96,6 @@ func main() {
 			}
 
 			selectedSymbols := strings.Split(foundSymbols.Value, ",")
-			for i := range selectedSymbols {
-				client.PlacedOrders[selectedSymbols[i]] = false
-			}
 
 			ticker := time.NewTicker(time.Duration(timeframe) * time.Minute)
 			fmt.Println("Strategy execution started (you can still do other actions)")
@@ -108,16 +105,33 @@ func main() {
 				for {
 					select {
 					case <-ticker.C:
+					strategiesLoop:
 						for _, strategy := range selectedStrategies {
 							for _, symbol := range selectedSymbols {
 								klines, err := client.GetKlines(symbol, timeframe)
 								if err != nil {
-									log.Panicln(err)
-									break
+									log.Println(err)
+									break strategiesLoop
 								}
 
 								series := getSeries(klines)
-								decision, indicators := availableStrategies[strategy](symbol, series, &client.PlacedOrders)
+								decision, indicators := availableStrategies[strategy](symbol, series)
+
+								var foundOrder orders.Order
+								r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
+								if r.Error != nil && !r.RecordNotFound() {
+									log.Panicln(r.Error)
+									return
+								}
+
+								if r.RecordNotFound() && decision == "Sell" {
+									log.Println("err: no buy has been done on this symbol to initiate sell")
+									continue
+								} else if !r.RecordNotFound() && decision == "Buy" {
+									log.Println("err: this position is already bought")
+									continue
+								} // I get the feeling I can somehow improve this logic. Readability though?
+
 								price := series.LastCandle().ClosePrice.String()
 
 								var quantity float64
@@ -130,13 +144,6 @@ func main() {
 
 									util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
 								case "Sell":
-									var foundOrder orders.Order
-									r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
-									if r.Error != nil && !r.RecordNotFound() {
-										log.Panicln(r.Error)
-										return
-									}
-
 									quantity := fmt.Sprint(foundOrder.Quantity)
 									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
 									fmt.Println(order)
@@ -182,7 +189,7 @@ func main() {
 								fmt.Println(message)
 
 								if decision != "Hold" {
-									writerType := output.Txt
+									writerType := output.Excel
 									writer := output.NewWriterCreator().CreateWriter(writerType)
 									writer.WriteToLog(data, strategies.Datakeys[strategy])
 								}

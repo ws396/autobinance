@@ -21,7 +21,8 @@ type Analysis struct {
 	SuccessfulSells uint          `json:"successfulSells"`
 	ProfitUSD       float64       `json:"profitUSD"`
 	SuccessRate     float64       `json:"successRate"` // Should be calculated from: Sells for a better price than their buys / Total sells
-	ActiveTime      time.Duration `json:"activeTime"`  // Should be updated with each trade attempt for each position. Feels a bit too performance heavy? Could rather count the trades in DB on demand
+	Timeframe       int           `json:"timeframe"`
+	ActiveTime      time.Duration `json:"activeTime"` // Should be updated with each trade attempt for each position. Feels a bit too performance heavy? Could rather count the trades in DB on demand
 	CreatedAt       time.Time     `json:"createdAt"`
 	UpdatedAt       time.Time     `json:"updatedAt"`
 }
@@ -79,6 +80,7 @@ func CreateAnalysis(strategy, symbol string, price float64) {
 		SuccessfulSells: 0,
 		ProfitUSD:       -price, // And this
 		SuccessRate:     0,
+		Timeframe:       *Timeframe,
 		ActiveTime:      0,
 	})
 	if r.Error != nil {

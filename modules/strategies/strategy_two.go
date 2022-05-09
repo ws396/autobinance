@@ -1,8 +1,6 @@
 package strategies
 
 import (
-	"fmt"
-
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/modules/techanext"
@@ -48,9 +46,9 @@ type sellRuleTwo struct {
 func (r sellRuleTwo) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	l := len(r.series.Candles)
 
-	//a0 := r.MACD.Calculate(l - 2)
+	a0 := r.MACD.Calculate(l - 2)
 	a1 := r.MACD.Calculate(l - 1)
-	if a1.LT(big.NewFromInt(0)) /*|| a1.GT(a0)*/ {
+	if a1.LT(big.NewFromInt(0)) || a1.GT(a0) {
 		return false
 	}
 
@@ -64,11 +62,12 @@ func (r sellRuleTwo) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	if c.GT(r.series.LastCandle().ClosePrice) {
 		return false
 	}
+	// Don't really like this style of logic. Need to write it like in ytwilliams strategy.
 
 	return true
 }
 
-func StrategyTwo(symbol string, series *techan.TimeSeries, placedOrders *map[string]bool) (string, map[string]string) {
+func StrategyTwo(symbol string, series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 
 	MACD := techan.NewMACDIndicator(closePrices, 12, 26)
@@ -99,14 +98,6 @@ func StrategyTwo(symbol string, series *techan.TimeSeries, placedOrders *map[str
 		result = "Buy"
 	} else if strategy.ShouldExit(20, record) {
 		result = "Sell"
-	}
-
-	if !(*placedOrders)[symbol] && result == "Sell" {
-		fmt.Println("err: no buy has been done on this symbol to initiate sell")
-		return "", nil
-	} else if (*placedOrders)[symbol] && result == "Buy" {
-		fmt.Println("err: this position is already bought")
-		return "", nil
 	}
 
 	indicators := map[string]string{

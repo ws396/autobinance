@@ -4,16 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strconv"
 
 	"github.com/adshao/go-binance/v2"
 )
 
 type ClientExt struct {
 	*binance.Client
-	PlacedOrders map[string]bool
-	walletBUSD   float64
-	walletOther  map[string]float64
 }
 
 func init() {
@@ -21,7 +17,7 @@ func init() {
 }
 
 func NewExtClient(apiKey, secretKey string) *ClientExt {
-	return &ClientExt{binance.NewClient("", ""), map[string]bool{}, 100, map[string]float64{}}
+	return &ClientExt{binance.NewClient("", "")}
 }
 
 func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
@@ -36,29 +32,32 @@ func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
 }
 
 func (client *ClientExt) CreateOrder(symbol, quantity, price string, orderType binance.SideType) string {
-	q, err := strconv.ParseFloat(quantity, 64)
-	if err != nil {
-		log.Panicln(err)
-		return ""
-	}
+	/*
+		q, err := strconv.ParseFloat(quantity, 64)
+		if err != nil {
+			log.Panicln(err)
+			return ""
+		}
 
-	p, err := strconv.ParseFloat(price, 64)
-	if err != nil {
-		log.Panicln(err)
-		return ""
-	}
+		p, err := strconv.ParseFloat(price, 64)
+		if err != nil {
+			log.Panicln(err)
+			return ""
+		}
 
-	if orderType == binance.SideTypeBuy {
-		client.walletBUSD -= q * p
-		client.walletOther[symbol] += q
-		client.PlacedOrders[symbol] = true
-	} else if orderType == binance.SideTypeSell {
-		client.walletBUSD += q * p
-		client.walletOther[symbol] -= q
-		client.PlacedOrders[symbol] = false
-	}
+		if orderType == binance.SideTypeBuy {
+			client.walletBUSD -= q * p
+			client.walletOther[symbol] += q
+			client.PlacedOrders[symbol] = true
+		} else if orderType == binance.SideTypeSell {
+			client.walletBUSD += q * p
+			client.walletOther[symbol] -= q
+			client.PlacedOrders[symbol] = false
+		}
 
-	return fmt.Sprint("BUSD: ", client.walletBUSD, "\n", symbol, ": ", client.walletOther[symbol])
+		return fmt.Sprint("BUSD: ", client.walletBUSD, "\n", symbol, ": ", client.walletOther[symbol])
+	*/
+	return "Order successful (check analyses or orders table)"
 }
 
 func (client *ClientExt) GetOrders() []*binance.Order {
@@ -93,15 +92,19 @@ func (client *ClientExt) GetAccount() *binance.Account {
 }
 
 func (client *ClientExt) GetCurrencies(symbol ...string) []binance.Balance {
-	result := []binance.Balance{}
-	balances := client.GetAccount().Balances
-	for i := range balances {
-		for _, v := range symbol {
-			if balances[i].Asset == v {
-				result = append(result, balances[i])
+	/*
+		result := []binance.Balance{}
+		balances := client.GetAccount().Balances
+		for i := range balances {
+			for _, v := range symbol {
+				if balances[i].Asset == v {
+					result = append(result, balances[i])
+				}
 			}
 		}
-	}
 
-	return result
+		return result
+	*/
+
+	return []binance.Balance{0: {Asset: "Unavailable in simulation mode"}} // Probably need to put something different here?
 }

@@ -1,55 +1,39 @@
 package strategies
 
 import (
-	"fmt"
-	"log"
-
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/modules/techanext"
 )
 
 type buyRuleYTWilliams struct {
-	MACD    techan.Indicator
-	RSI     techan.Indicator
-	lowerBB techan.Indicator
-	series  *techan.TimeSeries
+	EMA50        techan.Indicator
+	MACDH        techan.Indicator
+	WilliamsR    techan.Indicator
+	WilliamsREMA techan.Indicator
+	series       *techan.TimeSeries
 }
 
 func (r buyRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) bool {
-	// cinar/indicator
-	/*
-		var lowSlice, highSlice, closingSlice []float64
-		williamsRlen := 21
-		start := len(r.series.Candles) - williamsRlen //- 1
-
-		for i := 0; i < williamsRlen; i++ {
-			lowSlice = append(lowSlice, r.series.Candles[start+i].MinPrice.Float())
-			highSlice = append(highSlice, r.series.Candles[start+i].MaxPrice.Float())
-			closingSlice = append(closingSlice, r.series.Candles[start+i].ClosePrice.Float())
-		}
-
-		d := indicator.WilliamsR(lowSlice, highSlice, closingSlice) // This function actually has a hardcoded 14 period for some reason......
-	*/
-	d := techanext.NewWilliamsRIndicator(r.series, 21)
-
 	l := len(r.series.Candles)
-	fmt.Println(d.Calculate(l - 1))
 
-	a0 := r.MACD.Calculate(l - 2)
-	a1 := r.MACD.Calculate(l - 1)
-	if a1.GT(big.NewFromInt(0)) || a1.LTE(a0) {
+	a0 := r.EMA50.Calculate(l - 2)
+	a1 := r.EMA50.Calculate(l - 1)
+	if !(r.series.LastCandle().ClosePrice.GT(a1) && a1.GT(a0)) {
 		return false
 	}
 
-	b0 := r.RSI.Calculate(l - 2)
-	b1 := r.RSI.Calculate(l - 1)
-	if b1.GT(big.NewFromInt(33)) || b1.LTE(b0) {
+	b0 := r.MACDH.Calculate(l - 2)
+	b1 := r.MACDH.Calculate(l - 1)
+	if !(b0.GT(big.NewDecimal(0)) && b1.LT(big.NewDecimal(0))) {
 		return false
 	}
 
-	c := r.lowerBB.Calculate(l - 1)
-	if c.LTE(r.series.LastCandle().ClosePrice) {
+	c0 := r.WilliamsR.Calculate(l - 2)
+	c1 := r.WilliamsR.Calculate(l - 1)
+	d0 := r.WilliamsREMA.Calculate(l - 2)
+	d1 := r.WilliamsREMA.Calculate(l - 1)
+	if !(c0.GT(d0) && c1.LT(d1)) {
 		return false
 	}
 
@@ -57,52 +41,64 @@ func (r buyRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) 
 }
 
 type sellRuleYTWilliams struct {
-	MACD    techan.Indicator
-	RSI     techan.Indicator
-	upperBB techan.Indicator
-	series  *techan.TimeSeries
+	EMA50        techan.Indicator
+	MACDH        techan.Indicator
+	WilliamsR    techan.Indicator
+	WilliamsREMA techan.Indicator
+	series       *techan.TimeSeries
 }
 
 func (r sellRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	l := len(r.series.Candles)
 
-	a0 := r.MACD.Calculate(l - 2)
-	a1 := r.MACD.Calculate(l - 1)
-	if a1.LT(big.NewFromInt(0)) || a1.GT(a0) {
+	a0 := r.EMA50.Calculate(l - 2)
+	a1 := r.EMA50.Calculate(l - 1)
+	if !(r.series.LastCandle().ClosePrice.LT(a1) && a1.LT(a0)) {
 		return false
 	}
 
-	b0 := r.RSI.Calculate(l - 2)
-	b1 := r.RSI.Calculate(l - 1)
-	if b1.LT(big.NewFromInt(66)) || b1.GT(b0) {
+	b0 := r.MACDH.Calculate(l - 2)
+	b1 := r.MACDH.Calculate(l - 1)
+	if !(b0.LT(big.NewDecimal(0)) && b1.GT(big.NewDecimal(0))) {
 		return false
 	}
 
-	c := r.upperBB.Calculate(l - 1)
-	if c.GT(r.series.LastCandle().ClosePrice) {
+	c0 := r.WilliamsR.Calculate(l - 2)
+	c1 := r.WilliamsR.Calculate(l - 1)
+	d0 := r.WilliamsREMA.Calculate(l - 2)
+	d1 := r.WilliamsREMA.Calculate(l - 1)
+	if !(c0.LT(d0) && c1.GT(d1) && c1.LT(big.NewDecimal(-15))) {
 		return false
 	}
 
 	return true
 }
 
-func StrategyYTWilliams(symbol string, series *techan.TimeSeries, placedOrders *map[string]bool) (string, map[string]string) {
+func StrategyYTWilliams(symbol string, series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 
-	MACD := techan.NewMACDIndicator(closePrices, 12, 26)
-	RSI := techan.NewRelativeStrengthIndexIndicator(closePrices, 14)
-	upperBB := techan.NewBollingerUpperBandIndicator(closePrices, 20, 1.7)
-	lowerBB := techan.NewBollingerLowerBandIndicator(closePrices, 20, 1.8)
+	EMA50 := techan.NewEMAIndicator(closePrices, 50)
+	// Above EMA + upward slope - buy, below EMA + downward slope - sell (Not sure if I like this, but okay)
+
+	MACDH := techan.NewMACDHistogramIndicator(techan.NewMACDIndicator(closePrices, 12, 26), 9)
+	// Negative->posiive for buy, positive->negative for sell
+
+	WilliamsR := techanext.NewWilliamsRIndicator(series, 21)
+
+	WilliamsREMA := techan.NewEMAIndicator(WilliamsR, 13)
+	// WR downcross through EMA and WR + EMA downcross -20 line - sell, WR upcross through EMA (and WR + EMA upcross -80 line?) - buy
+	// Need to check 3 or 4 candles here, because it is acceptable for these conditions to not be fulfilled simultaneously.
+	// Although I think I can simply check if the WR through EMA cross happened above -20 or below -80? Shouldn't make a huge difference.
 
 	record := techan.NewTradingRecord()
 
 	entryRule := techan.And(
-		buyRuleYTWilliams{MACD, RSI, lowerBB, series},
+		buyRuleYTWilliams{EMA50, MACDH, WilliamsR, WilliamsREMA, series},
 		techan.PositionNewRule{},
 	)
 
 	exitRule := techan.And(
-		sellRuleYTWilliams{MACD, RSI, upperBB, series},
+		sellRuleYTWilliams{EMA50, MACDH, WilliamsR, WilliamsREMA, series},
 		techan.PositionOpenRule{},
 	)
 
@@ -119,21 +115,15 @@ func StrategyYTWilliams(symbol string, series *techan.TimeSeries, placedOrders *
 		result = "Sell"
 	}
 
-	if !(*placedOrders)[symbol] && result == "Sell" {
-		log.Println("err: no buy has been done on this symbol to initiate sell")
-		return "", nil
-	} else if (*placedOrders)[symbol] && result == "Buy" {
-		log.Println("err: this position is already bought")
-		return "", nil
-	}
-
 	indicators := map[string]string{
-		"MACD0":   MACD.Calculate(len(series.Candles) - 2).String(),
-		"MACD1":   MACD.Calculate(len(series.Candles) - 1).String(),
-		"RSI0":    RSI.Calculate(len(series.Candles) - 2).String(),
-		"RSI1":    RSI.Calculate(len(series.Candles) - 1).String(),
-		"upperBB": upperBB.Calculate(len(series.Candles) - 1).String(),
-		"lowerBB": lowerBB.Calculate(len(series.Candles) - 1).String(),
+		"EMA0":          EMA50.Calculate(len(series.Candles) - 2).String(),
+		"EMA1":          EMA50.Calculate(len(series.Candles) - 1).String(),
+		"MACDH0":        MACDH.Calculate(len(series.Candles) - 2).String(),
+		"MACDH1":        MACDH.Calculate(len(series.Candles) - 1).String(),
+		"WilliamsR0":    WilliamsR.Calculate(len(series.Candles) - 2).String(),
+		"WilliamsR1":    WilliamsR.Calculate(len(series.Candles) - 1).String(),
+		"WilliamsREMA0": WilliamsREMA.Calculate(len(series.Candles) - 2).String(),
+		"WilliamsREMA1": WilliamsREMA.Calculate(len(series.Candles) - 1).String(),
 	}
 
 	return result, indicators

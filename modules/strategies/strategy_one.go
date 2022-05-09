@@ -1,8 +1,6 @@
 package strategies
 
 import (
-	"log"
-
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
 )
@@ -67,7 +65,7 @@ func (r sellRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	return true
 }
 
-func StrategyOne(symbol string, series *techan.TimeSeries, placedOrders *map[string]bool) (string, map[string]string) {
+func StrategyOne(symbol string, series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 
 	MACD := techan.NewMACDIndicator(closePrices, 12, 26)
@@ -98,14 +96,6 @@ func StrategyOne(symbol string, series *techan.TimeSeries, placedOrders *map[str
 		result = "Buy"
 	} else if strategy.ShouldExit(20, record) {
 		result = "Sell"
-	}
-
-	if !(*placedOrders)[symbol] && result == "Sell" {
-		log.Println("err: no buy has been done on this symbol to initiate sell")
-		return "", nil
-	} else if (*placedOrders)[symbol] && result == "Buy" {
-		log.Println("err: this position is already bought")
-		return "", nil
 	}
 
 	indicators := map[string]string{
