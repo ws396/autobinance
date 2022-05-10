@@ -97,7 +97,7 @@ func main() {
 
 			selectedSymbols := strings.Split(foundSymbols.Value, ",")
 
-			ticker := time.NewTicker(time.Duration(timeframe) * time.Minute)
+			ticker := time.NewTicker(time.Duration(timeframe) * time.Minute / 2) // Let's try doing these twice per timeframe
 			fmt.Println("Strategy execution started (you can still do other actions)")
 			strategyRunning = true
 
@@ -191,7 +191,7 @@ func main() {
 								if decision != "Hold" {
 									writerType := output.Excel
 									writer := output.NewWriterCreator().CreateWriter(writerType)
-									writer.WriteToLog(data, strategies.Datakeys[strategy])
+									writer.WriteToLog(data)
 								}
 
 								strategies.UpdateOrCreateAnalysis(order)
