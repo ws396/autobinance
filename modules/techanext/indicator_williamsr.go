@@ -8,29 +8,21 @@ import (
 )
 
 type williamsRIndicator struct {
-	series    *techan.TimeSeries
-	timeframe int
+	series *techan.TimeSeries
+	window int
 }
 
-func NewWilliamsRIndicator(series *techan.TimeSeries, timeframe int) techan.Indicator {
+func NewWilliamsRIndicator(series *techan.TimeSeries, window int) techan.Indicator {
 	return williamsRIndicator{
-		series:    series,
-		timeframe: timeframe,
+		series: series,
+		window: window,
 	}
 }
 
 func (wri williamsRIndicator) Calculate(index int) big.Decimal {
 	closingPrices := techan.NewClosePriceIndicator(wri.series).Calculate(index)
-	highestHigh := techan.NewMaximumValueIndicator(techan.NewHighPriceIndicator(wri.series), wri.timeframe).Calculate(index)
-	lowestLow := techan.NewMinimumValueIndicator(techan.NewLowPriceIndicator(wri.series), wri.timeframe).Calculate(index)
-
-	/*
-		log.Println("highest test: ", highestHigh)
-		log.Println("lowest test: ", lowestLow)
-		log.Println("closing test: ", closingPrices)
-		log.Println("decimal test: ", highestHigh.Sub(closingPrices))
-		log.Println("denominator test: ", highestHigh.Sub(lowestLow))
-	*/
+	highestHigh := techan.NewMaximumValueIndicator(techan.NewHighPriceIndicator(wri.series), wri.window).Calculate(index)
+	lowestLow := techan.NewMinimumValueIndicator(techan.NewLowPriceIndicator(wri.series), wri.window).Calculate(index)
 
 	if highestHigh.EQ(lowestLow) {
 		return big.NewDecimal(0)

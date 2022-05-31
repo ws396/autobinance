@@ -42,6 +42,21 @@ var Datakeys = map[string]*[]string{
 		"Decision",
 		"Strategy",
 	},
+	"ytmod": {
+		"EMA0",
+		"EMA1",
+		"MACDH0",
+		"MACDH1",
+		"WilliamsR0",
+		"WilliamsR1",
+		"WilliamsREMA0",
+		"WilliamsREMA1",
+		"Current price",
+		"Time",
+		"Symbol",
+		"Decision",
+		"Strategy",
+	},
 }
 
 // Guess I'll keep them here? Also need to make double sure if these pointers even make sense 🐱!

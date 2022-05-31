@@ -49,6 +49,7 @@ func main() {
 			"one":        strategies.StrategyOne,
 			"two":        strategies.StrategyTwo,
 			"ytwilliams": strategies.StrategyYTWilliams,
+			"ytmod":      strategies.StrategyYTMod,
 		}
 	)
 
