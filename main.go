@@ -102,105 +102,109 @@ func main() {
 			fmt.Println("Strategy execution started (you can still do other actions)")
 			strategyRunning = true
 
-			go func(selectedSymbols []string) {
-				for {
-					select {
-					case <-ticker.C:
-					strategiesLoop:
-						for _, strategy := range selectedStrategies {
-							for _, symbol := range selectedSymbols {
-								klines, err := client.GetKlines(symbol, timeframe)
-								if err != nil {
-									log.Println(err)
-									break strategiesLoop
-								}
-
-								series := getSeries(klines)
-								decision, indicators := availableStrategies[strategy](symbol, series)
-
-								var foundOrder orders.Order
-								r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
-								if r.Error != nil && !r.RecordNotFound() {
-									log.Panicln(r.Error)
-									return
-								}
-
-								if r.RecordNotFound() && decision == "Sell" {
-									log.Println("err: no buy has been done on this symbol to initiate sell")
-									continue
-								} else if !r.RecordNotFound() && decision == "Buy" {
-									log.Println("err: this position is already bought")
-									continue
-								} // I get the feeling I can somehow improve this logic. Readability though?
-
-								price := series.LastCandle().ClosePrice.String()
-
-								var quantity float64
-
-								switch decision {
-								case "Buy":
-									quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
-									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
-									fmt.Println(order)
-
-									util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
-								case "Sell":
-									quantity := fmt.Sprint(foundOrder.Quantity)
-									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
-									fmt.Println(order)
-
-									util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
-								}
-
-								indicatorsJSON, err := json.Marshal(indicators)
-								if err != nil {
-									log.Panicln(err)
-								}
-
-								//var order *orders.Order
-								order := &orders.Order{
-									Symbol:     symbol,
-									Strategy:   strategy,
-									Decision:   decision,
-									Quantity:   quantity,
-									Price:      series.LastCandle().ClosePrice.Float() * quantity,
-									Indicators: string(indicatorsJSON),
-								}
-								if decision != "Hold" {
-									r := db.Client.Table("orders").Create(order)
-									if r.Error != nil {
-										log.Panicln(r.Error)
-									}
-								}
-
-								data := indicators
-								data["Current price"] = series.LastCandle().ClosePrice.String()
-								data["Time"] = time.Now().Format("02-01-2006 15:04:05")
-								data["Symbol"] = symbol
-								data["Decision"] = decision
-								data["Strategy"] = strategy
-
-								message := fmt.Sprint(
-									"----------", "\n",
-								)
-								for _, v := range *strategies.Datakeys[strategy] {
-									message += fmt.Sprint(v, ": ", data[v], "\n")
-								}
-
-								fmt.Println(message)
-
-								if decision != "Hold" {
-									writerType := output.Excel
-									writer := output.NewWriterCreator().CreateWriter(writerType)
-									writer.WriteToLog(data)
-								}
-
-								strategies.UpdateOrCreateAnalysis(order)
+			for {
+				select {
+				case <-ticker.C:
+					//strategiesLoop:
+					for _, symbol := range selectedSymbols {
+						go func(symbol string) {
+							klines, err := client.GetKlines(symbol, timeframe)
+							if err != nil {
+								log.Println(err)
+								//break strategiesLoop
+								return
 							}
-						}
+
+							series := getSeries(klines)
+							for _, strategy := range selectedStrategies {
+								go func(strategy string) {
+									decision, indicators := availableStrategies[strategy](symbol, series)
+
+									var foundOrder orders.Order
+									r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
+									if r.Error != nil && !r.RecordNotFound() {
+										log.Panicln(r.Error)
+										return
+									}
+
+									if r.RecordNotFound() && decision == "Sell" {
+										log.Println("err: no buy has been done on this symbol to initiate sell")
+										return
+									} else if !r.RecordNotFound() && decision == "Buy" {
+										log.Println("err: this position is already bought")
+										return
+									}
+
+									price := series.LastCandle().ClosePrice.String()
+
+									var quantity float64
+
+									switch decision {
+									case "Buy":
+										quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
+										order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
+										fmt.Println(order)
+
+										util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
+									case "Sell":
+										quantity := fmt.Sprint(foundOrder.Quantity)
+										order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
+										fmt.Println(order)
+
+										util.ShowJSON(client.GetCurrencies("BNB", "BUSD"))
+									}
+
+									indicatorsJSON, err := json.Marshal(indicators)
+									if err != nil {
+										log.Panicln(err)
+									}
+
+									//var order *orders.Order
+									order := &orders.Order{
+										Symbol:     symbol,
+										Strategy:   strategy,
+										Decision:   decision,
+										Quantity:   quantity,
+										Price:      series.LastCandle().ClosePrice.Float() * quantity,
+										Indicators: string(indicatorsJSON),
+									}
+									if decision != "Hold" {
+										r := db.Client.Table("orders").Create(order)
+										if r.Error != nil {
+											log.Panicln(r.Error)
+										}
+									}
+
+									data := indicators
+									data["Current price"] = series.LastCandle().ClosePrice.String()
+									data["Time"] = time.Now().Format("02-01-2006 15:04:05")
+									data["Symbol"] = symbol
+									data["Decision"] = decision
+									data["Strategy"] = strategy
+
+									message := fmt.Sprint(
+										"----------", "\n",
+									)
+									for _, v := range *strategies.Datakeys[strategy] {
+										message += fmt.Sprint(v, ": ", data[v], "\n")
+									}
+
+									fmt.Println(message)
+
+									if decision != "Hold" {
+										writerType := output.Excel
+										writer := output.NewWriterCreator().CreateWriter(writerType)
+										writer.WriteToLog(data)
+									}
+
+									strategies.UpdateOrCreateAnalysis(order)
+								}(strategy)
+							}
+						}(symbol)
 					}
 				}
-			}(selectedSymbols)
+			}
+
 		case "2":
 			settings.ScanUpdateOrCreate("selected_strategies")
 		case "3":
