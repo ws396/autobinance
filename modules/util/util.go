@@ -2,9 +2,26 @@ package util
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log"
+	"os"
+	"regexp"
+	"strings"
+	"time"
 )
+
+const (
+	logMisc = "log_misc.txt"
+)
+
+func ToSnakeCase(str string) string {
+	matchFirstCap := regexp.MustCompile("(.)([A-Z][a-z]+)")
+	matchAllCap := regexp.MustCompile("([a-z0-9])([A-Z])")
+
+	snake := matchFirstCap.ReplaceAllString(str, "${1}_${2}")
+	snake = matchAllCap.ReplaceAllString(snake, "${1}_${2}")
+	return strings.ToLower(snake)
+}
 
 func ShowJSON(data interface{}) {
 	j, err := json.MarshalIndent(data, "", "    🐱") // 🐱🐱🐱🐱🐱🐱🐱🐱!!
@@ -12,5 +29,19 @@ func ShowJSON(data interface{}) {
 		log.Panicln(err)
 	}
 
-	fmt.Println(string(j))
+	//fmt.Println(string(j))
+	f, err := os.OpenFile(logMisc, os.O_WRONLY|os.O_APPEND, 0644)
+	if errors.Is(err, os.ErrNotExist) {
+		f, err = os.Create(logMisc)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(time.Now().Format("02-01-2006 15:04:05") + "\n" + string(j) + "\n")
+	if err != nil {
+		log.Fatalf("Got error while writing to a file. Err: %s", err.Error())
+	}
 }

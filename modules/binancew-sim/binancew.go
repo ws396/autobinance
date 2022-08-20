@@ -12,10 +12,6 @@ type ClientExt struct {
 	*binance.Client
 }
 
-func init() {
-	fmt.Println("THE GO-BINANCE WRAPPER IS IN SIMULATION MODE")
-}
-
 func NewExtClient(apiKey, secretKey string) *ClientExt {
 	return &ClientExt{binance.NewClient("", "")}
 }

@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/ws396/autobinance/modules/db"
+	"github.com/ws396/autobinance/modules/globals"
 	"github.com/ws396/autobinance/modules/orders"
 )
-
-var Timeframe *int
 
 type Analysis struct {
 	ID              uint          `json:"id" gorm:"primary_key;auto_increment"`
@@ -65,7 +64,7 @@ func UpdateOrCreateAnalysis(order *orders.Order) {
 			foundAnalysis.SuccessRate = float64(foundAnalysis.SuccessfulSells / foundAnalysis.Sells)
 		}
 
-		foundAnalysis.ActiveTime += time.Duration(*Timeframe) * time.Minute
+		foundAnalysis.ActiveTime += time.Duration(globals.Timeframe) * time.Minute
 
 		db.Client.Table("analyses").Save(&foundAnalysis)
 	}
@@ -80,7 +79,7 @@ func CreateAnalysis(strategy, symbol string, price float64) {
 		SuccessfulSells: 0,
 		ProfitUSD:       -price, // And this
 		SuccessRate:     0,
-		Timeframe:       *Timeframe,
+		Timeframe:       globals.Timeframe,
 		ActiveTime:      0,
 	})
 	if r.Error != nil {
