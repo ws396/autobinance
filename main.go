@@ -184,91 +184,94 @@ func (m *model) Logic() {
 		m.info = "Strategy execution started (you can still do other actions)"
 		strategyRunning = true
 
-		for { // Wrap in goroutine?
-			<-ticker.C
-			for _, symbol := range selectedSymbols {
-				go func(symbol string) {
-					klines, err := client.GetKlines(symbol, globals.Timeframe)
-					if err != nil {
-						m.err = err
-						return
-					}
+		go func() {
+			for { // Wrap in goroutine?
+				<-ticker.C
+				dataChannel := make(chan map[string]string, len(selectedStrategies)*len(selectedSymbols))
+				for _, symbol := range selectedSymbols {
+					go func(symbol string) {
+						klines, err := client.GetKlines(symbol, globals.Timeframe)
+						if err != nil {
+							m.err = err
+							return
+						}
 
-					series := techanext.GetSeries(klines)
-					for _, strategy := range selectedStrategies {
-						go func(strategy string) {
-							decision, indicators := availableStrategies[strategy](symbol, series)
+						series := techanext.GetSeries(klines)
+						for _, strategy := range selectedStrategies {
+							go func(strategy string) {
+								decision, indicators := availableStrategies[strategy](symbol, series)
 
-							var foundOrder orders.Order
-							r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
-							if r.Error != nil && !r.RecordNotFound() {
-								m.err = errors.New(r.Error.Error())
-								return
-							}
-
-							if r.RecordNotFound() && decision == "Sell" {
-								m.err = errors.New("err: no buy has been done on this symbol to initiate sell")
-								return
-							} else if !r.RecordNotFound() && decision == "Buy" {
-								m.err = errors.New("err: this position is already bought")
-								return
-							}
-
-							price := series.LastCandle().ClosePrice.String()
-
-							var quantity float64
-
-							switch decision {
-							case "Buy":
-								quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
-								order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
-								util.ShowJSON(order)
-							case "Sell":
-								quantity := fmt.Sprint(foundOrder.Quantity)
-								order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
-								util.ShowJSON(order)
-							}
-
-							indicatorsJSON, err := json.Marshal(indicators)
-							if err != nil {
-								m.err = err
-							}
-
-							order := &orders.Order{
-								Symbol:     symbol,
-								Strategy:   strategy,
-								Decision:   decision,
-								Quantity:   quantity,
-								Price:      series.LastCandle().ClosePrice.Float() * quantity,
-								Indicators: string(indicatorsJSON),
-							}
-							if decision != "Hold" {
-								r := db.Client.Table("orders").Create(order)
-								if r.Error != nil {
+								var foundOrder orders.Order
+								r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
+								if r.Error != nil && !r.RecordNotFound() {
 									m.err = errors.New(r.Error.Error())
+									return
 								}
-							}
 
-							data := indicators
-							data["Current price"] = series.LastCandle().ClosePrice.String()
-							data["Time"] = time.Now().Format("02-01-2006 15:04:05")
-							data["Symbol"] = symbol
-							data["Decision"] = decision
-							data["Strategy"] = strategy
+								if r.RecordNotFound() && decision == "Sell" {
+									m.err = errors.New("err: no buy has been done on this symbol to initiate sell")
+									return
+								} else if !r.RecordNotFound() && decision == "Buy" {
+									m.err = errors.New("err: this position is already bought")
+									return
+								}
 
-							//if decision != "Hold" {
-								
-							writerType := output.Excel
-							writer := output.NewWriterCreator().CreateWriter(writerType)
-							writer.WriteToLog(data) // NOT THREADSAFE!
-							//}
+								price := series.LastCandle().ClosePrice.String()
 
-							strategies.UpdateOrCreateAnalysis(order)
-						}(strategy)
-					}
-				}(symbol)
+								var quantity float64
+
+								switch decision {
+								case "Buy":
+									quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
+									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
+									util.ShowJSON(order)
+								case "Sell":
+									quantity := fmt.Sprint(foundOrder.Quantity)
+									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
+									util.ShowJSON(order)
+								}
+
+								indicatorsJSON, err := json.Marshal(indicators)
+								if err != nil {
+									m.err = err
+								}
+
+								order := &orders.Order{
+									Symbol:     symbol,
+									Strategy:   strategy,
+									Decision:   decision,
+									Quantity:   quantity,
+									Price:      series.LastCandle().ClosePrice.Float() * quantity,
+									Indicators: string(indicatorsJSON),
+								}
+								if decision != "Hold" {
+									r := db.Client.Table("orders").Create(order)
+									if r.Error != nil {
+										m.err = errors.New(r.Error.Error())
+									}
+								}
+
+								data := indicators
+								data["Current price"] = series.LastCandle().ClosePrice.String()
+								data["Time"] = time.Now().Format("02-01-2006 15:04:05")
+								data["Symbol"] = symbol
+								data["Decision"] = decision
+								data["Strategy"] = strategy
+
+								//if decision != "Hold" {
+								dataChannel <- data
+								//}
+
+								strategies.UpdateOrCreateAnalysis(order)
+							}(strategy)
+						}
+					}(symbol)
+				}
+				writerType := output.Excel
+				writer := output.NewWriterCreator().CreateWriter(writerType)
+				writer.WriteToLog(dataChannel) // NOT THREADSAFE!
 			}
-		}
+		}()
 	case "2":
 		m.settings.SelectedStrategies.Value = settings.Find(m.settings.SelectedStrategies.Name)
 	case "3":
@@ -291,6 +294,14 @@ func (m *model) Logic() {
 		}
 
 		util.ShowJSON(prices)
+	case "7":
+		ticker := time.NewTicker(time.Duration(1) * time.Second)
+		go func() {
+			for {
+				<-ticker.C
+				m.info += "yeh"
+			}
+		}()
 	}
 
 }
@@ -302,7 +313,7 @@ func (m model) View() string {
 		err = m.err.Error()
 	}
 
-	return wordwrap.String(indent.String("\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+err, 4), m.width)
+	return wordwrap.String(indent.String("\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+m.info+"\n\n"+err, 4), m.width)
 }
 
 func chosenView(m model) string {

@@ -25,7 +25,7 @@ type Creator interface {
 }
 
 type Writer interface {
-	WriteToLog(map[string]string)
+	WriteToLog(chan map[string]string)
 }
 
 type ConcreteWriterCreator struct {
@@ -53,7 +53,7 @@ func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
 type TxtWriter struct {
 }
 
-func (p *TxtWriter) WriteToLog(data map[string]string) {
+func (p *TxtWriter) WriteToLog(ch chan map[string]string) {
 	f, err := os.OpenFile("log.txt", os.O_WRONLY|os.O_APPEND, 0644)
 	if errors.Is(err, os.ErrNotExist) {
 		f, err = os.Create("log.txt")
@@ -67,9 +67,14 @@ func (p *TxtWriter) WriteToLog(data map[string]string) {
 	message := fmt.Sprint(
 		"----------", "\n",
 	)
-	for _, v := range *strategies.Datakeys[data["Strategy"]] {
-		message += fmt.Sprint(v, ": ", data[v], "\n")
+
+	for i := 0; i < cap(ch); i++ {
+		data := <-ch
+		for _, v := range *strategies.Datakeys[data["Strategy"]] {
+			message += fmt.Sprint(v, ": ", data[v], "\n")
+		}
 	}
+
 	_, err = f.WriteString(message)
 	if err != nil {
 		log.Fatalf("Got error while writing to a file. Err: %s", err.Error())
@@ -79,39 +84,30 @@ func (p *TxtWriter) WriteToLog(data map[string]string) {
 type ExcelWriter struct {
 }
 
-func (p *ExcelWriter) WriteToLog(data map[string]string) {
+func (p *ExcelWriter) WriteToLog(ch chan map[string]string) {
 	f, err := excelize.OpenFile("log.xlsx")
 	if errors.Is(err, os.ErrNotExist) {
 		f = excelize.NewFile()
 
-		/*
-			for strategy := range strategies.Datakeys {
-				i := 0
-				f.NewSheet(strategy)
-				for _, v := range *strategies.Datakeys[strategy] {
-					f.SetCellValue(strategy, string(rune('A'+i))+"1", v)
-					i++
-				}
+		for k, v := range strategies.Datakeys {
+			f.NewSheet(k)
+
+			pos := 0
+			for _, v2 := range *v {
+				f.SetCellValue(k, string(rune('A'+pos))+"1", v2)
+				//f.SetCellValue(k, string(rune('A'+pos))+"2", data[v])
+				pos++
 			}
-		*/
-
-		f.NewSheet(data["Strategy"])
-
-		i := 0
-		for _, v := range *strategies.Datakeys[data["Strategy"]] { // There is no need to pass dataKeys
-			f.SetCellValue(data["Strategy"], string(rune('A'+i))+"1", v)
-			f.SetCellValue(data["Strategy"], string(rune('A'+i))+"2", data[v])
-			i++
 		}
 
-		f.DeleteSheet("Sheet1") // ?
+		f.DeleteSheet("Sheet1")
 
 		if err := f.SaveAs("log.xlsx"); err != nil {
 			log.Panicln(err)
 			return
 		}
 
-		return
+		//return
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
@@ -119,28 +115,17 @@ func (p *ExcelWriter) WriteToLog(data map[string]string) {
 		}
 	}()
 
-	rows, _ := f.GetRows(data["Strategy"])
-	lastRow := fmt.Sprint(len(rows) + 1)
+	for i := 0; i < cap(ch); i++ {
+		data := <-ch
+		rows, _ := f.GetRows(data["Strategy"])
+		lastRow := fmt.Sprint(len(rows) + 1)
 
-	if f.GetSheetIndex(data["Strategy"]) == -1 {
-		f.NewSheet(data["Strategy"])
-
-		i := 0
-		for _, v := range *strategies.Datakeys[data["Strategy"]] { // There is no need to pass dataKeys
-			f.SetCellValue(data["Strategy"], string(rune('A'+i))+"1", v)
-			f.SetCellValue(data["Strategy"], string(rune('A'+i))+"2", data[v])
-			i++
+		pos := 0
+		for _, v := range *strategies.Datakeys[data["Strategy"]] {
+			f.SetCellValue(data["Strategy"], string(rune('A'+pos))+lastRow, data[v])
+			//util.ShowJSON(string(rune('A'+pos)) + lastRow + " _ " + data[v])
+			pos++
 		}
-
-		f.Save()
-
-		return
-	}
-
-	i := 0
-	for _, v := range *strategies.Datakeys[data["Strategy"]] {
-		f.SetCellValue(data["Strategy"], string(rune('A'+i))+lastRow, data[v])
-		i++
 	}
 
 	f.Save()
