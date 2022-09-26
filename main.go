@@ -29,10 +29,9 @@ import (
 )
 
 var (
-	//timeframe           int     = 1
 	buyAmount           float64 = 50
 	strategyRunning             = false
-	availableStrategies         = map[string]func(string, *techan.TimeSeries) (string, map[string]string){
+	availableStrategies         = map[string]func(*techan.TimeSeries) (string, map[string]string){
 		"one":        strategies.StrategyOne,
 		"two":        strategies.StrategyTwo,
 		"ytwilliams": strategies.StrategyYTWilliams,
@@ -51,8 +50,6 @@ func main() {
 	strategies.AutoMigrateAnalyses()
 	settings.AutoMigrateSettings()
 	orders.AutoMigrateOrders()
-
-	//strategies.Timeframe = &timeframe
 
 	apiKey := os.Getenv("API_KEY")
 	secretKey := os.Getenv("SECRET_KEY")
@@ -199,7 +196,7 @@ func (m *model) Logic() {
 						series := techanext.GetSeries(klines)
 						for _, strategy := range selectedStrategies {
 							go func(strategy string) {
-								decision, indicators := availableStrategies[strategy](symbol, series)
+								decision, indicators := availableStrategies[strategy](series)
 
 								var foundOrder orders.Order
 								r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")

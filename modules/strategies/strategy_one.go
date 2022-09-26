@@ -65,7 +65,7 @@ func (r sellRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	return true
 }
 
-func StrategyOne(symbol string, series *techan.TimeSeries) (string, map[string]string) {
+func StrategyOne(series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 
 	MACD := techan.NewMACDIndicator(closePrices, 12, 26)

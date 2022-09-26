@@ -6,7 +6,7 @@ import (
 	"github.com/ws396/autobinance/modules/techanext"
 )
 
-type buyRuleYTWilliams struct {
+type buyRuleShortened struct {
 	EMA50        techan.Indicator
 	MACDH        techan.Indicator
 	WilliamsR    techan.Indicator
@@ -14,7 +14,7 @@ type buyRuleYTWilliams struct {
 	series       *techan.TimeSeries
 }
 
-func (r buyRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) bool {
+func (r buyRuleShortened) IsSatisfied() bool {
 	l := len(r.series.Candles)
 
 	a0 := r.EMA50.Calculate(l - 2)
@@ -40,7 +40,7 @@ func (r buyRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) 
 	return true
 }
 
-type sellRuleYTWilliams struct {
+type sellRuleShortened struct {
 	EMA50        techan.Indicator
 	MACDH        techan.Indicator
 	WilliamsR    techan.Indicator
@@ -48,7 +48,7 @@ type sellRuleYTWilliams struct {
 	series       *techan.TimeSeries
 }
 
-func (r sellRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord) bool {
+func (r sellRuleShortened) IsSatisfied() bool {
 	l := len(r.series.Candles)
 
 	a0 := r.EMA50.Calculate(l - 2)
@@ -74,44 +74,22 @@ func (r sellRuleYTWilliams) IsSatisfied(index int, record *techan.TradingRecord)
 	return true
 }
 
-func StrategyYTWilliams(series *techan.TimeSeries) (string, map[string]string) {
+func StrategyShortened(series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
-
 	EMA50 := techan.NewEMAIndicator(closePrices, 50)
-	// Above EMA + upward slope - buy, below EMA + downward slope - sell (Not sure if I like this, but okay)
-
 	MACDH := techan.NewMACDHistogramIndicator(techan.NewMACDIndicator(closePrices, 12, 26), 9)
-	// Negative->posiive for buy, positive->negative for sell
-
 	WilliamsR := techanext.NewWilliamsRIndicator(series, 21)
-
 	WilliamsREMA := techan.NewEMAIndicator(WilliamsR, 13)
-	// WR downcross through EMA and WR + EMA downcross -20 line - sell, WR upcross through EMA (and WR + EMA upcross -80 line?) - buy
-	// Need to check 3 or 4 candles here, because it is acceptable for these conditions to not be fulfilled simultaneously.
-	// Although I think I can simply check if the WR through EMA cross happened above -20 or below -80? Shouldn't make a huge difference.
 
-	record := techan.NewTradingRecord()
+	//record := techan.NewTradingRecord() // Currently not checking if position is new or not
 
-	entryRule := techan.And(
-		buyRuleYTWilliams{EMA50, MACDH, WilliamsR, WilliamsREMA, series},
-		techan.PositionNewRule{},
-	)
-
-	exitRule := techan.And(
-		sellRuleYTWilliams{EMA50, MACDH, WilliamsR, WilliamsREMA, series},
-		techan.PositionOpenRule{},
-	)
-
-	strategy := techan.RuleStrategy{
-		UnstablePeriod: 10,
-		EntryRule:      entryRule,
-		ExitRule:       exitRule,
-	}
+	buyRule := buyRuleShortened{EMA50, MACDH, WilliamsR, WilliamsREMA, series}
+	sellRule := sellRuleShortened{EMA50, MACDH, WilliamsR, WilliamsREMA, series}
 
 	result := "Hold"
-	if strategy.ShouldEnter(20, record) {
+	if buyRule.IsSatisfied() {
 		result = "Buy"
-	} else if strategy.ShouldExit(20, record) {
+	} else if sellRule.IsSatisfied() {
 		result = "Sell"
 	}
 

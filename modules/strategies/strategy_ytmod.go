@@ -98,7 +98,7 @@ func (r sellRuleYTMod) IsSatisfied(index int, record *techan.TradingRecord) bool
 	return true
 }
 
-func StrategyYTMod(symbol string, series *techan.TimeSeries) (string, map[string]string) {
+func StrategyYTMod(series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 
 	//check2 := techanext.NewHMAIndicator(closePrices, 9)
