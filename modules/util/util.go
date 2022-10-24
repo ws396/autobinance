@@ -23,13 +23,12 @@ func ToSnakeCase(str string) string {
 	return strings.ToLower(snake)
 }
 
-func ShowJSON(data interface{}) {
-	j, err := json.MarshalIndent(data, "", "    🐱") // 🐱🐱🐱🐱🐱🐱🐱🐱!!
+func WriteJSON(data interface{}) {
+	j, err := json.MarshalIndent(data, "", "    ")
 	if err != nil {
 		log.Panicln(err)
 	}
 
-	//fmt.Println(string(j))
 	f, err := os.OpenFile(logMisc, os.O_WRONLY|os.O_APPEND, 0644)
 	if errors.Is(err, os.ErrNotExist) {
 		f, err = os.Create(logMisc)

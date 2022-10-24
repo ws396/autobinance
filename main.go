@@ -78,17 +78,18 @@ type model struct {
 
 func initialModel() model {
 	ti := textinput.New()
-	ti.Placeholder = "Pikachu"
 	ti.Focus()
 	//ti.CharLimit = 156
 	ti.Width = 80
-	// Pre-load all options here?
+
+	// Pre-load all settings here?
+	settings, err := settings.GetSettings()
 
 	return model{
-		settings:  settings.GetSettingsOutline(),
+		settings:  settings,
 		choice:    "root",
 		textInput: ti,
-		err:       nil,
+		err:       err,
 	}
 }
 
@@ -133,8 +134,10 @@ func (m *model) Logic() {
 	switch m.choice {
 	case "2":
 		settings.Update(m.settings.SelectedStrategies.Name, m.textInput.Value())
+		m.settings.SelectedStrategies.Value = m.textInput.Value()
 	case "3":
 		settings.Update(m.settings.SelectedSymbols.Name, m.textInput.Value())
+		m.settings.SelectedSymbols.Value = m.textInput.Value()
 	}
 
 	// Choice transition (Might also want to check here if previous step actually needs a transition)
@@ -149,126 +152,9 @@ func (m *model) Logic() {
 
 	// New choice pre-render logic
 	switch m.choice {
-	case "1": // Keep in mind that with current approach the unsold assets will remain unsold with app relaunch
-		if strategyRunning {
-			m.err = errors.New("err: the strategy is already running")
-			return
-		}
-
-		var foundStrategies settings.Setting
-		r := db.Client.Table("settings").First(&foundStrategies, "name = ?", "selected_strategies")
-		if r.Error != nil && !r.RecordNotFound() { // Should be reverse order with elseif
-			m.err = errors.New(r.Error.Error()) // Might want to leave panics in places like these :)
-		}
-		if r.RecordNotFound() {
-			m.err = errors.New("err: please specify the strategies first")
-		}
-
-		selectedStrategies := strings.Split(foundStrategies.Value, ",")
-
-		var foundSymbols settings.Setting
-		r = db.Client.Table("settings").First(&foundSymbols, "name = ?", "selected_symbols")
-		if r.Error != nil && !r.RecordNotFound() {
-			m.err = errors.New(r.Error.Error())
-		}
-		if r.RecordNotFound() {
-			m.err = errors.New("err: please specify the settings first")
-		}
-
-		selectedSymbols := strings.Split(foundSymbols.Value, ",")
-
-		ticker := time.NewTicker(time.Duration(globals.Timeframe) * time.Minute / 6) // Let's try doing these twice per timeframe
-		m.info = "Strategy execution started (you can still do other actions)"
-		strategyRunning = true
-
-		go func() {
-			for { // Wrap in goroutine?
-				<-ticker.C
-				dataChannel := make(chan map[string]string, len(selectedStrategies)*len(selectedSymbols))
-				for _, symbol := range selectedSymbols {
-					go func(symbol string) {
-						klines, err := client.GetKlines(symbol, globals.Timeframe)
-						if err != nil {
-							m.err = err
-							return
-						}
-
-						series := techanext.GetSeries(klines)
-						for _, strategy := range selectedStrategies {
-							go func(strategy string) {
-								decision, indicators := availableStrategies[strategy](series)
-
-								var foundOrder orders.Order
-								r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", strategy, symbol, "Buy")
-								if r.Error != nil && !r.RecordNotFound() {
-									m.err = errors.New(r.Error.Error())
-									return
-								}
-
-								if r.RecordNotFound() && decision == "Sell" {
-									m.err = errors.New("err: no buy has been done on this symbol to initiate sell")
-									return
-								} else if !r.RecordNotFound() && decision == "Buy" {
-									m.err = errors.New("err: this position is already bought")
-									return
-								}
-
-								price := series.LastCandle().ClosePrice.String()
-
-								var quantity float64
-
-								switch decision {
-								case "Buy":
-									quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
-									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
-									util.ShowJSON(order)
-								case "Sell":
-									quantity := fmt.Sprint(foundOrder.Quantity)
-									order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
-									util.ShowJSON(order)
-								}
-
-								indicatorsJSON, err := json.Marshal(indicators)
-								if err != nil {
-									m.err = err
-								}
-
-								order := &orders.Order{
-									Symbol:     symbol,
-									Strategy:   strategy,
-									Decision:   decision,
-									Quantity:   quantity,
-									Price:      series.LastCandle().ClosePrice.Float() * quantity,
-									Indicators: string(indicatorsJSON),
-								}
-								if decision != "Hold" {
-									r := db.Client.Table("orders").Create(order)
-									if r.Error != nil {
-										m.err = errors.New(r.Error.Error())
-									}
-								}
-
-								data := indicators
-								data["Current price"] = series.LastCandle().ClosePrice.String()
-								data["Time"] = time.Now().Format("02-01-2006 15:04:05")
-								data["Symbol"] = symbol
-								data["Decision"] = decision
-								data["Strategy"] = strategy
-
-								//if decision != "Hold" {
-								dataChannel <- data
-								//}
-
-								strategies.UpdateOrCreateAnalysis(order)
-							}(strategy)
-						}
-					}(symbol)
-				}
-				writerType := output.Excel
-				writer := output.NewWriterCreator().CreateWriter(writerType)
-				writer.WriteToLog(dataChannel) // NOT THREADSAFE!
-			}
-		}()
+	case "1": // Keep in mind that with current approach the unsold assets will remain unsold when the app stops
+		excelWriter := output.NewWriterCreator().CreateWriter(output.Excel)
+		m.startTradingSession(excelWriter)
 	case "2":
 		m.settings.SelectedStrategies.Value = settings.Find(m.settings.SelectedStrategies.Name)
 	case "3":
@@ -280,9 +166,9 @@ func (m *model) Logic() {
 			break
 		}
 
-		util.ShowJSON(klines)
+		util.WriteJSON(klines)
 	case "5":
-		util.ShowJSON(client.GetAccount())
+		util.WriteJSON(client.GetAccount())
 	case "6":
 		prices, err := client.NewListPricesService().Do(context.Background())
 		if err != nil {
@@ -290,27 +176,143 @@ func (m *model) Logic() {
 			return
 		}
 
-		util.ShowJSON(prices)
-	case "7":
-		ticker := time.NewTicker(time.Duration(1) * time.Second)
-		go func() {
-			for {
-				<-ticker.C
-				m.info += "yeh"
-			}
-		}()
+		util.WriteJSON(prices)
 	}
 
 }
 
-// The main view, which just calls the appropriate sub-view
-func (m model) View() string {
-	var err string
-	if m.err != nil {
-		err = m.err.Error()
+func (m *model) startTradingSession(writer output.Writer) {
+	if strategyRunning {
+		m.err = errors.New("err: the strategy is already running")
+		return
 	}
 
-	return wordwrap.String(indent.String("\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+m.info+"\n\n"+err, 4), m.width)
+	/*
+		var foundStrategies settings.Setting
+		r := db.Client.Table("settings").First(&foundStrategies, "name = ?", "selected_strategies")
+		if r.RecordNotFound() {
+			m.err = errors.New("err: please specify the strategies first")
+		} else if r.Error != nil {
+			m.err = r.Error // Might want to leave panics in places like these :)
+		}
+		selectedStrategies := strings.Split(foundStrategies.Value, ",")
+
+		var foundSymbols settings.Setting
+		r = db.Client.Table("settings").First(&foundSymbols, "name = ?", "selected_symbols")
+		if r.RecordNotFound() {
+			m.err = errors.New("err: please specify the settings first")
+		} else if r.Error != nil {
+			m.err = r.Error
+		}
+		selectedSymbols := strings.Split(foundSymbols.Value, ",")
+	*/
+
+	selectedStrategies := strings.Split(m.settings.SelectedStrategies.Value, ",")
+	selectedSymbols := strings.Split(m.settings.SelectedSymbols.Value, ",")
+	ticker := time.NewTicker(time.Duration(globals.Timeframe) * time.Minute / 6) // Let's try doing these twice per timeframe
+	m.info = "Strategy execution started (you can still do other actions)"
+	strategyRunning = true
+
+	// Some sort of context needed here?
+	go func() {
+		for {
+			<-ticker.C
+			dataChannel := make(chan map[string]string, len(selectedStrategies)*len(selectedSymbols))
+			for _, symbol := range selectedSymbols {
+				go func(symbol string) {
+					klines, err := client.GetKlines(symbol, globals.Timeframe)
+					if err != nil {
+						m.err = err
+						return
+					}
+
+					series := techanext.GetSeries(klines)
+					for _, strategy := range selectedStrategies {
+						go func(strategy string) {
+							decision, indicators := availableStrategies[strategy](series)
+
+							// Since I can't test it properly, I guess I need another factory for storages
+							// (or need to somehow modify the existing writer_factory)
+							var foundOrder orders.Order
+							r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
+							if r.Error != nil && !r.RecordNotFound() {
+								m.err = r.Error
+								return
+							}
+
+							// I guess I assume that this table will not contain "Holds"
+							if foundOrder.Decision == "Sell" && decision == "Sell" {
+								m.err = errors.New("err: no recent buy has been done on this symbol to initiate sell")
+								return
+							} else if foundOrder.Decision == "Buy" && decision == "Buy" {
+								m.err = errors.New("err: this position is already bought")
+								return
+							}
+
+							price := series.LastCandle().ClosePrice.String()
+
+							var quantity float64
+
+							switch decision {
+							case "Buy":
+								quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
+								order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
+								util.WriteJSON(order)
+							case "Sell":
+								quantity := fmt.Sprint(foundOrder.Quantity)
+								order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
+								util.WriteJSON(order)
+							}
+
+							var indicatorsJSON []byte
+							indicatorsJSON, m.err = json.Marshal(indicators)
+
+							order := &orders.Order{
+								Symbol:     symbol,
+								Strategy:   strategy,
+								Decision:   decision,
+								Quantity:   quantity,
+								Price:      series.LastCandle().ClosePrice.Float() * quantity,
+								Indicators: string(indicatorsJSON),
+							}
+
+							if decision != "Hold" {
+								r := db.Client.Table("orders").Create(order)
+								if r.Error != nil {
+									m.err = r.Error
+								}
+							}
+
+							data := indicators
+							data["Current price"] = series.LastCandle().ClosePrice.String()
+							data["Time"] = time.Now().Format("02-01-2006 15:04:05")
+							data["Symbol"] = symbol
+							data["Decision"] = decision
+							data["Strategy"] = strategy
+
+							//if decision != "Hold" {
+							dataChannel <- data
+							//}
+
+							m.err = strategies.UpdateOrCreateAnalysis(order)
+						}(strategy)
+					}
+				}(symbol)
+			}
+
+			writer.WriteToLog(dataChannel)
+		}
+	}()
+}
+
+// The main view, which just calls the appropriate sub-view
+func (m model) View() string {
+	var errMessage string
+	if m.err != nil {
+		errMessage = m.err.Error()
+	}
+
+	return wordwrap.String(indent.String("\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+m.info+"\n\n"+errMessage, 4), m.width)
 }
 
 func chosenView(m model) string {

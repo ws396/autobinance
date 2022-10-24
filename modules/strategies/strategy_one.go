@@ -28,7 +28,7 @@ func (r buyRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	}
 
 	c := r.lowerBB.Calculate(l - 1)
-	if c.LTE(r.series.LastCandle().ClosePrice) {
+	if c.LTE(r.series.LastCandle().ClosePrice) { //nolint:gosimple // Do I want it like this?
 		return false
 	}
 
@@ -58,7 +58,7 @@ func (r sellRuleOne) IsSatisfied(index int, record *techan.TradingRecord) bool {
 	}
 
 	c := r.upperBB.Calculate(l - 1)
-	if c.GT(r.series.LastCandle().ClosePrice) {
+	if c.GT(r.series.LastCandle().ClosePrice) { //nolint:gosimple
 		return false
 	}
 

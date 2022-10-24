@@ -10,7 +10,7 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// Looking a bit too prematurely convoluted, but let's try to do this the "right" way :^)
+// Based on:
 // https://github.com/AlexanderGrom/go-patterns/blob/master/Creational/FactoryMethod/factory_method.go
 
 type action string
@@ -70,7 +70,7 @@ func (p *TxtWriter) WriteToLog(ch chan map[string]string) {
 
 	for i := 0; i < cap(ch); i++ {
 		data := <-ch
-		for _, v := range *strategies.Datakeys[data["Strategy"]] {
+		for _, v := range strategies.Datakeys[data["Strategy"]] {
 			message += fmt.Sprint(v, ": ", data[v], "\n")
 		}
 	}
@@ -93,7 +93,7 @@ func (p *ExcelWriter) WriteToLog(ch chan map[string]string) {
 			f.NewSheet(k)
 
 			pos := 0
-			for _, v2 := range *v {
+			for _, v2 := range v {
 				f.SetCellValue(k, string(rune('A'+pos))+"1", v2)
 				//f.SetCellValue(k, string(rune('A'+pos))+"2", data[v])
 				pos++
@@ -121,7 +121,7 @@ func (p *ExcelWriter) WriteToLog(ch chan map[string]string) {
 		lastRow := fmt.Sprint(len(rows) + 1)
 
 		pos := 0
-		for _, v := range *strategies.Datakeys[data["Strategy"]] {
+		for _, v := range strategies.Datakeys[data["Strategy"]] {
 			f.SetCellValue(data["Strategy"], string(rune('A'+pos))+lastRow, data[v])
 			//util.ShowJSON(string(rune('A'+pos)) + lastRow + " _ " + data[v])
 			pos++

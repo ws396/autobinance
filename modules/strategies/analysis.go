@@ -3,6 +3,7 @@ package strategies
 // Use separate package maybe?
 
 import (
+	"errors"
 	"log"
 	"time"
 
@@ -30,17 +31,17 @@ func AutoMigrateAnalyses() {
 	db.Client.AutoMigrate(&Analysis{})
 }
 
-func UpdateOrCreateAnalysis(order *orders.Order) {
+func UpdateOrCreateAnalysis(order *orders.Order) error {
 	var foundAnalysis Analysis
 	r := db.Client.Table("analyses").First(&foundAnalysis, "strategy = ? AND symbol = ?", order.Strategy, order.Symbol)
 	if r.Error != nil && !r.RecordNotFound() {
-		log.Panicln(r.Error)
+		return r.Error
 	}
 	if r.RecordNotFound() {
 		if order.Decision == "Buy" {
 			CreateAnalysis(order.Strategy, order.Symbol, order.Price)
 		} else if order.Decision == "Sell" {
-			log.Panicln("err: the first order type of symbol should always be buy")
+			return errors.New("err: the first order type of symbol should always be buy")
 		}
 	} else {
 		if order.Decision == "Buy" {
@@ -52,8 +53,7 @@ func UpdateOrCreateAnalysis(order *orders.Order) {
 			var foundOrder orders.Order
 			r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", order.Strategy, order.Symbol, "Buy")
 			if r.Error != nil && !r.RecordNotFound() {
-				log.Panicln(r.Error)
-				return
+				return r.Error
 			}
 
 			if foundOrder.Price < order.Price {
@@ -68,6 +68,8 @@ func UpdateOrCreateAnalysis(order *orders.Order) {
 
 		db.Client.Table("analyses").Save(&foundAnalysis)
 	}
+
+	return nil
 }
 
 func CreateAnalysis(strategy, symbol string, price float64) {

@@ -1,37 +1,63 @@
 package strategies
 
 import (
-	"fmt"
-
 	"github.com/sdcoffey/techan"
 )
 
-func StrategyExample(series *techan.TimeSeries) bool {
-	closePrices := techan.NewClosePriceIndicator(series)
-	movingAverage := techan.NewEMAIndicator(closePrices, 10) // Windows depicts amount of periods taken
+type buyRuleExample struct {
+	EMA50  techan.Indicator
+	series *techan.TimeSeries
+}
 
-	// record trades on this object
-	record := techan.NewTradingRecord()
+func (r buyRuleExample) IsSatisfied() bool {
+	l := len(r.series.Candles)
 
-	entryConstant := techan.NewConstantIndicator(30)
-	exitConstant := techan.NewConstantIndicator(10)
-
-	entryRule := techan.And(
-		techan.NewCrossUpIndicatorRule(entryConstant, movingAverage),
-		techan.PositionNewRule{},
-	) // Is satisfied when the price ema moves above 30 and the current position is new
-
-	exitRule := techan.And(
-		techan.NewCrossDownIndicatorRule(movingAverage, exitConstant),
-		techan.PositionOpenRule{},
-	) // Is satisfied when the price ema moves below 10 and the current position is open
-
-	strategy := techan.RuleStrategy{
-		UnstablePeriod: 10,
-		EntryRule:      entryRule,
-		ExitRule:       exitRule,
+	a0 := r.EMA50.Calculate(l - 2)
+	a1 := r.EMA50.Calculate(l - 1)
+	if !(r.series.LastCandle().ClosePrice.GT(a1) && a1.GT(a0)) {
+		return false
 	}
 
-	fmt.Println(movingAverage.Calculate(len(series.Candles) - 1)) // Calculate argument is index of series array
-	return strategy.ShouldEnter(20, record)                       // Index should be > UnstablePeriod for getting true!
+	return true
+}
+
+type sellRuleExample struct {
+	EMA50  techan.Indicator
+	series *techan.TimeSeries
+}
+
+func (r sellRuleExample) IsSatisfied() bool {
+	l := len(r.series.Candles)
+
+	a0 := r.EMA50.Calculate(l - 2)
+	a1 := r.EMA50.Calculate(l - 1)
+	if !(r.series.LastCandle().ClosePrice.LT(a1) && a1.LT(a0)) {
+		return false
+	}
+
+	return true
+}
+
+func StrategyExample(series *techan.TimeSeries) (string, map[string]string) {
+	closePrices := techan.NewClosePriceIndicator(series)
+	EMA50 := techan.NewEMAIndicator(closePrices, 50)
+
+	//record := techan.NewTradingRecord() // Currently not checking if position is new or not
+
+	buyRule := buyRuleExample{EMA50, series}
+	sellRule := sellRuleExample{EMA50, series}
+
+	result := "Hold"
+	if buyRule.IsSatisfied() {
+		result = "Buy"
+	} else if sellRule.IsSatisfied() {
+		result = "Sell"
+	}
+
+	indicators := map[string]string{
+		"EMA0": EMA50.Calculate(len(series.Candles) - 2).String(),
+		"EMA1": EMA50.Calculate(len(series.Candles) - 1).String(),
+	}
+
+	return result, indicators
 }

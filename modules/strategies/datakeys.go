@@ -1,6 +1,16 @@
 package strategies
 
-var Datakeys = map[string]*[]string{
+// All datakeys expected to be seen in the output from each strategy should be described here
+var Datakeys = map[string][]string{
+	"example": {
+		"EMA0",
+		"EMA1",
+		"Current price",
+		"Time",
+		"Symbol",
+		"Decision",
+		"Strategy",
+	},
 	"one": {
 		"MACD0",
 		"MACD1",
@@ -58,5 +68,3 @@ var Datakeys = map[string]*[]string{
 		"Strategy",
 	},
 }
-
-// Guess I'll keep them here? Also need to make double sure if these pointers even make sense 🐱!
