@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/ws396/autobinance/modules/orders"
 	"github.com/ws396/autobinance/modules/strategies"
 	"github.com/xuri/excelize/v2"
 )
@@ -25,7 +26,7 @@ type Creator interface {
 }
 
 type Writer interface {
-	WriteToLog(chan map[string]string)
+	WriteToLog(chan *orders.Order)
 }
 
 type ConcreteWriterCreator struct {
@@ -53,7 +54,7 @@ func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
 type TxtWriter struct {
 }
 
-func (p *TxtWriter) WriteToLog(ch chan map[string]string) {
+func (p *TxtWriter) WriteToLog(ch chan *orders.Order) {
 	f, err := os.OpenFile("log.txt", os.O_WRONLY|os.O_APPEND, 0644)
 	if errors.Is(err, os.ErrNotExist) {
 		f, err = os.Create("log.txt")
@@ -70,8 +71,10 @@ func (p *TxtWriter) WriteToLog(ch chan map[string]string) {
 
 	for i := 0; i < cap(ch); i++ {
 		data := <-ch
-		for _, v := range strategies.Datakeys[data["Strategy"]] {
-			message += fmt.Sprint(v, ": ", data[v], "\n")
+		dataMap := orderToMap(data)
+
+		for _, v := range strategies.Datakeys[data.Strategy] {
+			message += fmt.Sprint(v, ": ", dataMap[v], "\n")
 		}
 	}
 
@@ -84,7 +87,7 @@ func (p *TxtWriter) WriteToLog(ch chan map[string]string) {
 type ExcelWriter struct {
 }
 
-func (p *ExcelWriter) WriteToLog(ch chan map[string]string) {
+func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
 	f, err := excelize.OpenFile("log.xlsx")
 	if errors.Is(err, os.ErrNotExist) {
 		f = excelize.NewFile()
@@ -95,7 +98,6 @@ func (p *ExcelWriter) WriteToLog(ch chan map[string]string) {
 			pos := 0
 			for _, v2 := range v {
 				f.SetCellValue(k, string(rune('A'+pos))+"1", v2)
-				//f.SetCellValue(k, string(rune('A'+pos))+"2", data[v])
 				pos++
 			}
 		}
@@ -117,16 +119,28 @@ func (p *ExcelWriter) WriteToLog(ch chan map[string]string) {
 
 	for i := 0; i < cap(ch); i++ {
 		data := <-ch
-		rows, _ := f.GetRows(data["Strategy"])
+		rows, _ := f.GetRows(data.Strategy)
 		lastRow := fmt.Sprint(len(rows) + 1)
 
+		dataMap := orderToMap(data)
+
 		pos := 0
-		for _, v := range strategies.Datakeys[data["Strategy"]] {
-			f.SetCellValue(data["Strategy"], string(rune('A'+pos))+lastRow, data[v])
-			//util.ShowJSON(string(rune('A'+pos)) + lastRow + " _ " + data[v])
+		for _, v := range strategies.Datakeys[data.Strategy] {
+			f.SetCellValue(data.Strategy, string(rune('A'+pos))+lastRow, dataMap[v])
 			pos++
 		}
 	}
 
 	f.Save()
+}
+
+func orderToMap(data *orders.Order) map[string]string {
+	dataMap := data.Indicators
+	dataMap["Current price"] = fmt.Sprintf("%v", data.Price)
+	dataMap["Time"] = data.Time.Format("02-01-2006 15:04:05")
+	dataMap["Symbol"] = data.Symbol
+	dataMap["Decision"] = data.Decision
+	dataMap["Strategy"] = data.Strategy
+
+	return dataMap
 }

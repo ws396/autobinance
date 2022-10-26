@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -30,7 +29,6 @@ import (
 
 var (
 	buyAmount           float64 = 50
-	strategyRunning             = false
 	availableStrategies         = map[string]func(*techan.TimeSeries) (string, map[string]string){
 		"one":        strategies.StrategyOne,
 		"two":        strategies.StrategyTwo,
@@ -66,14 +64,15 @@ type errMsg error
 
 // All view-related data goes through model
 type model struct {
-	settings  settings.Settings // Non-map version of settings looks kinda ugly, but it's nice to have a specified struct with no magical strings
-	quitting  bool
-	choice    string
-	textInput textinput.Model
-	width     int
-	//height    int
-	info string
-	err  error
+	settings        settings.Settings // Non-map version of settings looks kinda ugly, but it's nice to have a specified struct with no magical strings
+	quitting        bool
+	choice          string
+	textInput       textinput.Model
+	width           int
+	info            string
+	err             error
+	strategyRunning bool
+	ticker          *time.Ticker
 }
 
 func initialModel() model {
@@ -85,11 +84,15 @@ func initialModel() model {
 	// Pre-load all settings here?
 	settings, err := settings.GetSettings()
 
+	// Feels a bit wrong to put it here. But then again, it IS directly related to the main business logic of this app
+	ticker := time.NewTicker(time.Duration(globals.Timeframe) * time.Minute / 6)
+
 	return model{
 		settings:  settings,
 		choice:    "root",
 		textInput: ti,
 		err:       err,
+		ticker:    ticker,
 	}
 }
 
@@ -182,42 +185,21 @@ func (m *model) Logic() {
 }
 
 func (m *model) startTradingSession(writer output.Writer) {
-	if strategyRunning {
+	if m.strategyRunning {
 		m.err = errors.New("err: the strategy is already running")
 		return
 	}
 
-	/*
-		var foundStrategies settings.Setting
-		r := db.Client.Table("settings").First(&foundStrategies, "name = ?", "selected_strategies")
-		if r.RecordNotFound() {
-			m.err = errors.New("err: please specify the strategies first")
-		} else if r.Error != nil {
-			m.err = r.Error // Might want to leave panics in places like these :)
-		}
-		selectedStrategies := strings.Split(foundStrategies.Value, ",")
-
-		var foundSymbols settings.Setting
-		r = db.Client.Table("settings").First(&foundSymbols, "name = ?", "selected_symbols")
-		if r.RecordNotFound() {
-			m.err = errors.New("err: please specify the settings first")
-		} else if r.Error != nil {
-			m.err = r.Error
-		}
-		selectedSymbols := strings.Split(foundSymbols.Value, ",")
-	*/
-
 	selectedStrategies := strings.Split(m.settings.SelectedStrategies.Value, ",")
 	selectedSymbols := strings.Split(m.settings.SelectedSymbols.Value, ",")
-	ticker := time.NewTicker(time.Duration(globals.Timeframe) * time.Minute / 6) // Let's try doing these twice per timeframe
 	m.info = "Strategy execution started (you can still do other actions)"
-	strategyRunning = true
+	m.strategyRunning = true
 
 	// Some sort of context needed here?
 	go func() {
 		for {
-			<-ticker.C
-			dataChannel := make(chan map[string]string, len(selectedStrategies)*len(selectedSymbols))
+			<-m.ticker.C
+			dataChannel := make(chan *orders.Order, len(selectedStrategies)*len(selectedSymbols))
 			for _, symbol := range selectedSymbols {
 				go func(symbol string) {
 					klines, err := client.GetKlines(symbol, globals.Timeframe)
@@ -233,6 +215,7 @@ func (m *model) startTradingSession(writer output.Writer) {
 
 							// Since I can't test it properly, I guess I need another factory for storages
 							// (or need to somehow modify the existing writer_factory)
+							// upd: These DB calls certainly need to be wrapped in another layer of abstraction
 							var foundOrder orders.Order
 							r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
 							if r.Error != nil && !r.RecordNotFound() {
@@ -264,17 +247,19 @@ func (m *model) startTradingSession(writer output.Writer) {
 								util.WriteJSON(order)
 							}
 
-							var indicatorsJSON []byte
-							indicatorsJSON, m.err = json.Marshal(indicators)
-
 							order := &orders.Order{
-								Symbol:     symbol,
 								Strategy:   strategy,
+								Symbol:     symbol,
 								Decision:   decision,
 								Quantity:   quantity,
 								Price:      series.LastCandle().ClosePrice.Float() * quantity,
-								Indicators: string(indicatorsJSON),
+								Indicators: indicators,
+								Time:       time.Now(),
 							}
+
+							//if decision != "Hold" {
+							dataChannel <- order
+							//}
 
 							if decision != "Hold" {
 								r := db.Client.Table("orders").Create(order)
@@ -282,17 +267,6 @@ func (m *model) startTradingSession(writer output.Writer) {
 									m.err = r.Error
 								}
 							}
-
-							data := indicators
-							data["Current price"] = series.LastCandle().ClosePrice.String()
-							data["Time"] = time.Now().Format("02-01-2006 15:04:05")
-							data["Symbol"] = symbol
-							data["Decision"] = decision
-							data["Strategy"] = strategy
-
-							//if decision != "Hold" {
-							dataChannel <- data
-							//}
 
 							m.err = strategies.UpdateOrCreateAnalysis(order)
 						}(strategy)
@@ -307,12 +281,12 @@ func (m *model) startTradingSession(writer output.Writer) {
 
 // The main view, which just calls the appropriate sub-view
 func (m model) View() string {
-	var errMessage string
+	var errMsg string
 	if m.err != nil {
-		errMessage = m.err.Error()
+		errMsg = m.err.Error()
 	}
 
-	return wordwrap.String(indent.String("\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+m.info+"\n\n"+errMessage, 4), m.width)
+	return wordwrap.String(indent.String("\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+m.info+"\n\n"+errMsg, 4), m.width)
 }
 
 func chosenView(m model) string {
@@ -322,8 +296,8 @@ func chosenView(m model) string {
 	case "root":
 		msg = fmt.Sprint(
 			"THE GO-BINANCE WRAPPER IS IN SIMULATION MODE", "\n",
-			"BUBBLETEA SUPER AUTOBINANCE TRADER WOW", "\n\n",
-			"1) Start trading execution", "\n",
+			"AUTOBINANCE", "\n\n",
+			"1) Start trading session", "\n",
 			"2) Set strategies", "\n",
 			"3) Set trade symbols", "\n",
 			"4) Check klines", "\n",
@@ -331,7 +305,7 @@ func chosenView(m model) string {
 			"6) List trades",
 		)
 	case "1":
-		msg = fmt.Sprint("Strategy execution started.")
+		msg = fmt.Sprint("Trading session started.")
 	case "2":
 		msg = fmt.Sprint("Currently selected strategies: ", m.settings.SelectedStrategies.Value)
 	case "3":
