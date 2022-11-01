@@ -25,11 +25,13 @@ import (
 	"github.com/ws396/autobinance/modules/strategies"
 	"github.com/ws396/autobinance/modules/techanext"
 	"github.com/ws396/autobinance/modules/util"
+	"gorm.io/gorm"
 )
 
 var (
 	buyAmount           float64 = 50
 	availableStrategies         = map[string]func(*techan.TimeSeries) (string, map[string]string){
+		"example":    strategies.StrategyExample,
 		"one":        strategies.StrategyOne,
 		"two":        strategies.StrategyTwo,
 		"ytwilliams": strategies.StrategyYTWilliams,
@@ -64,7 +66,7 @@ type errMsg error
 
 // All view-related data goes through model
 type model struct {
-	settings        settings.Settings // Non-map version of settings looks kinda ugly, but it's nice to have a specified struct with no magical strings
+	settings        settings.Settings
 	quitting        bool
 	choice          string
 	textInput       textinput.Model
@@ -169,9 +171,9 @@ func (m *model) Logic() {
 			break
 		}
 
-		util.WriteJSON(klines)
+		util.WriteToLogMisc(klines)
 	case "5":
-		util.WriteJSON(client.GetAccount())
+		util.WriteToLogMisc(client.GetAccount())
 	case "6":
 		prices, err := client.NewListPricesService().Do(context.Background())
 		if err != nil {
@@ -179,7 +181,15 @@ func (m *model) Logic() {
 			return
 		}
 
-		util.WriteJSON(prices)
+		util.WriteToLogMisc(prices)
+	case "7":
+		db.Client.Migrator().DropTable(&strategies.Analysis{})
+		db.Client.Migrator().DropTable(&settings.Setting{})
+		db.Client.Migrator().DropTable(&orders.Order{})
+
+		strategies.AutoMigrateAnalyses()
+		settings.AutoMigrateSettings()
+		orders.AutoMigrateOrders()
 	}
 
 }
@@ -213,39 +223,37 @@ func (m *model) startTradingSession(writer output.Writer) {
 						go func(strategy string) {
 							decision, indicators := availableStrategies[strategy](series)
 
-							// Since I can't test it properly, I guess I need another factory for storages
-							// (or need to somehow modify the existing writer_factory)
-							// upd: These DB calls certainly need to be wrapped in another layer of abstraction
+							// Might want to consider a different approach with a clearer logic for these DB calls
 							var foundOrder orders.Order
 							r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
-							if r.Error != nil && !r.RecordNotFound() {
-								m.err = r.Error
+							if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
+								log.Panicln("1", r.Error)
+								m.err = r.Error // TEST BREAKS HERE
 								return
 							}
 
 							// I guess I assume that this table will not contain "Holds"
-							if foundOrder.Decision == "Sell" && decision == "Sell" {
+							if foundOrder.Decision == globals.Sell && decision == globals.Sell {
 								m.err = errors.New("err: no recent buy has been done on this symbol to initiate sell")
 								return
-							} else if foundOrder.Decision == "Buy" && decision == "Buy" {
+							} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
 								m.err = errors.New("err: this position is already bought")
 								return
 							}
 
-							price := series.LastCandle().ClosePrice.String()
-
 							var quantity float64
-
+							// Should depend on found order?
 							switch decision {
-							case "Buy":
-								quantity := fmt.Sprintf("%f", buyAmount/series.LastCandle().ClosePrice.Float())
-								order := client.CreateOrder(symbol, quantity, price, binance.SideTypeBuy)
-								util.WriteJSON(order)
-							case "Sell":
-								quantity := fmt.Sprint(foundOrder.Quantity)
-								order := client.CreateOrder(symbol, quantity, price, binance.SideTypeSell)
-								util.WriteJSON(order)
+							case globals.Buy, globals.Hold:
+								quantity = buyAmount / series.LastCandle().ClosePrice.Float()
+							case globals.Sell:
+								quantity = foundOrder.Quantity
 							}
+
+							price := series.LastCandle().ClosePrice.String()
+							// Getting the actual order from this might be useful, but keep in mind that GORM might not like the []*Fill field
+							// Could also just selectively add fields from this to orders.Order below instead
+							client.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
 
 							order := &orders.Order{
 								Strategy:   strategy,
@@ -256,19 +264,26 @@ func (m *model) startTradingSession(writer output.Writer) {
 								Indicators: indicators,
 								Time:       time.Now(),
 							}
+							util.WriteToLogMisc(order)
 
-							//if decision != "Hold" {
+							//if decision != globals.Hold {
 							dataChannel <- order
 							//}
 
-							if decision != "Hold" {
+							if decision != globals.Hold {
 								r := db.Client.Table("orders").Create(order)
 								if r.Error != nil {
+									log.Panicln("2", r.Error)
 									m.err = r.Error
 								}
 							}
 
-							m.err = strategies.UpdateOrCreateAnalysis(order)
+							// Maybe need to group this up with channels like writing to log below
+							err = strategies.UpdateOrCreateAnalysis(order)
+							if err != nil {
+								log.Panicln("3", err)
+								m.err = err
+							}
 						}(strategy)
 					}
 				}(symbol)
@@ -302,7 +317,8 @@ func chosenView(m model) string {
 			"3) Set trade symbols", "\n",
 			"4) Check klines", "\n",
 			"5) Check account", "\n",
-			"6) List trades",
+			"6) List trades", "\n",
+			"7) Recreate tables",
 		)
 	case "1":
 		msg = fmt.Sprint("Trading session started.")
@@ -312,6 +328,8 @@ func chosenView(m model) string {
 		msg = fmt.Sprint("Currently selected symbols: ", m.settings.SelectedSymbols.Value)
 	case "4", "5", "6":
 		msg = fmt.Sprint("Output in log_misc.txt")
+	case "7":
+		msg = fmt.Sprint("All tables have been recreated")
 	default:
 		msg = fmt.Sprint("Invalid choice (type \\q to go back to root)")
 	}

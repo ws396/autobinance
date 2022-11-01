@@ -10,6 +10,7 @@ import (
 	"github.com/ws396/autobinance/modules/db"
 	"github.com/ws396/autobinance/modules/globals"
 	"github.com/ws396/autobinance/modules/orders"
+	"gorm.io/gorm"
 )
 
 type Analysis struct {
@@ -34,25 +35,25 @@ func AutoMigrateAnalyses() {
 func UpdateOrCreateAnalysis(order *orders.Order) error {
 	var foundAnalysis Analysis
 	r := db.Client.Table("analyses").First(&foundAnalysis, "strategy = ? AND symbol = ?", order.Strategy, order.Symbol)
-	if r.Error != nil && !r.RecordNotFound() {
+	if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
 		return r.Error
 	}
-	if r.RecordNotFound() {
-		if order.Decision == "Buy" {
+	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
+		if order.Decision == globals.Buy {
 			CreateAnalysis(order.Strategy, order.Symbol, order.Price)
-		} else if order.Decision == "Sell" {
+		} else if order.Decision == globals.Sell {
 			return errors.New("err: the first order type of symbol should always be buy")
 		}
 	} else {
-		if order.Decision == "Buy" {
+		if order.Decision == globals.Buy {
 			foundAnalysis.Buys += 1
 			foundAnalysis.ProfitUSD -= order.Price
-		} else if order.Decision == "Sell" {
+		} else if order.Decision == globals.Sell {
 			foundAnalysis.Sells += 1
 
 			var foundOrder orders.Order
-			r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", order.Strategy, order.Symbol, "Buy")
-			if r.Error != nil && !r.RecordNotFound() {
+			r := db.Client.Table("orders").First(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", order.Strategy, order.Symbol, globals.Buy)
+			if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
 				return r.Error
 			}
 

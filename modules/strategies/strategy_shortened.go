@@ -3,6 +3,7 @@ package strategies
 import (
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/modules/globals"
 	"github.com/ws396/autobinance/modules/techanext"
 )
 
@@ -86,11 +87,11 @@ func StrategyShortened(series *techan.TimeSeries) (string, map[string]string) {
 	buyRule := buyRuleShortened{EMA50, MACDH, WilliamsR, WilliamsREMA, series}
 	sellRule := sellRuleShortened{EMA50, MACDH, WilliamsR, WilliamsREMA, series}
 
-	result := "Hold"
+	result := globals.Hold
 	if buyRule.IsSatisfied() {
-		result = "Buy"
+		result = globals.Buy
 	} else if sellRule.IsSatisfied() {
-		result = "Sell"
+		result = globals.Sell
 	}
 
 	indicators := map[string]string{

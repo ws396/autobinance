@@ -3,6 +3,7 @@ package strategies
 import (
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/modules/globals"
 	"github.com/ws396/autobinance/modules/techanext"
 )
 
@@ -138,11 +139,11 @@ func StrategyYTMod(series *techan.TimeSeries) (string, map[string]string) {
 		ExitRule:       exitRule,
 	}
 
-	result := "Hold"
+	result := globals.Hold
 	if strategy.ShouldEnter(20, record) {
-		result = "Buy"
+		result = globals.Buy
 	} else if strategy.ShouldExit(20, record) {
-		result = "Sell"
+		result = globals.Sell
 	}
 
 	indicators := map[string]string{

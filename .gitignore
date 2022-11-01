@@ -1,6 +1,4 @@
-/log.txt
-/log.xlsx
-/log_misc.txt
-/.env
+/.*
 /tmp
-*.xlsx#
+/*.xlsx
+/log*

@@ -27,7 +27,7 @@ func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
 	return prices
 }
 
-func (client *ClientExt) CreateOrder(symbol, quantity, price string, orderType binance.SideType) string {
+func (client *ClientExt) CreateOrder(symbol, quantity, price string, orderType binance.SideType) *binance.CreateOrderResponse {
 	/*
 		q, err := strconv.ParseFloat(quantity, 64)
 		if err != nil {
@@ -53,7 +53,7 @@ func (client *ClientExt) CreateOrder(symbol, quantity, price string, orderType b
 
 		return fmt.Sprint("BUSD: ", client.walletBUSD, "\n", symbol, ": ", client.walletOther[symbol])
 	*/
-	return "Order successful (check analyses or orders table)"
+	return &binance.CreateOrderResponse{}
 }
 
 func (client *ClientExt) GetOrders() []*binance.Order {

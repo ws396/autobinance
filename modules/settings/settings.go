@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/ws396/autobinance/modules/db"
+	"gorm.io/gorm"
 )
 
 type Setting struct {
@@ -23,7 +24,7 @@ func AutoMigrateSettings() {
 
 	var foundSetting Setting
 	r := db.Client.Table("settings").First(&foundSetting)
-	if r.RecordNotFound() {
+	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
 		fields := []string{
 			"selected_symbols",
 			"selected_strategies",
@@ -37,7 +38,7 @@ func AutoMigrateSettings() {
 func GetSettings() (Settings, error) { // Return pointer maybe?
 	var foundStrategies Setting
 	r := db.Client.Table("settings").First(&foundStrategies, "name = ?", "selected_strategies")
-	if r.RecordNotFound() {
+	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
 		return Settings{}, errors.New("err: please specify the strategies first")
 	} else if r.Error != nil {
 		return Settings{}, r.Error
@@ -45,7 +46,7 @@ func GetSettings() (Settings, error) { // Return pointer maybe?
 
 	var foundSymbols Setting
 	r = db.Client.Table("settings").First(&foundSymbols, "name = ?", "selected_symbols")
-	if r.RecordNotFound() {
+	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
 		return Settings{}, errors.New("err: please specify the settings first")
 	} else if r.Error != nil {
 		return Settings{}, r.Error

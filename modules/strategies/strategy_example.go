@@ -2,6 +2,7 @@ package strategies
 
 import (
 	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/modules/globals"
 )
 
 type buyRuleExample struct {
@@ -47,11 +48,11 @@ func StrategyExample(series *techan.TimeSeries) (string, map[string]string) {
 	buyRule := buyRuleExample{EMA50, series}
 	sellRule := sellRuleExample{EMA50, series}
 
-	result := "Hold"
+	result := globals.Hold
 	if buyRule.IsSatisfied() {
-		result = "Buy"
+		result = globals.Buy
 	} else if sellRule.IsSatisfied() {
-		result = "Sell"
+		result = globals.Sell
 	}
 
 	indicators := map[string]string{
