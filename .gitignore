@@ -3,3 +3,5 @@
 /*.xlsx
 /log*
 /trade_history*
+/modules/strategies-auto
+/modules/strategies
