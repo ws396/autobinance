@@ -16,6 +16,7 @@ import (
 	"github.com/muesli/reflow/indent"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/modules/analysis"
 	"github.com/ws396/autobinance/modules/binancew-sim"
 	"github.com/ws396/autobinance/modules/db"
 	"github.com/ws396/autobinance/modules/globals"
@@ -47,7 +48,7 @@ func main() {
 	}
 
 	db.ConnectDB()
-	strategies.AutoMigrateAnalyses()
+	analysis.AutoMigrateAnalyses()
 	settings.AutoMigrateSettings()
 	orders.AutoMigrateOrders()
 
@@ -183,11 +184,11 @@ func (m *model) Logic() {
 
 		util.WriteToLogMisc(prices)
 	case "7":
-		db.Client.Migrator().DropTable(&strategies.Analysis{})
+		db.Client.Migrator().DropTable(&analysis.Analysis{})
 		db.Client.Migrator().DropTable(&settings.Setting{})
 		db.Client.Migrator().DropTable(&orders.Order{})
 
-		strategies.AutoMigrateAnalyses()
+		analysis.AutoMigrateAnalyses()
 		settings.AutoMigrateSettings()
 		orders.AutoMigrateOrders()
 	}
@@ -279,7 +280,7 @@ func (m *model) startTradingSession(writer output.Writer) {
 							}
 
 							// Maybe need to group this up with channels like writing to log below
-							err = strategies.UpdateOrCreateAnalysis(order)
+							err = analysis.UpdateOrCreateAnalysis(order)
 							if err != nil {
 								log.Panicln("3", err)
 								m.err = err

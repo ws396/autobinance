@@ -7,6 +7,19 @@ import (
 	"github.com/ws396/autobinance/modules/techanext"
 )
 
+func init() {
+	globals.AddStrategyDatakeys("shortened", []string{
+		"EMA0",
+		"EMA1",
+		"MACDH0",
+		"MACDH1",
+		"WilliamsR0",
+		"WilliamsR1",
+		"WilliamsREMA0",
+		"WilliamsREMA1",
+	})
+}
+
 type buyRuleShortened struct {
 	EMA50        techan.Indicator
 	MACDH        techan.Indicator

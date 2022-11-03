@@ -1,4 +1,4 @@
-package strategies
+package analysis
 
 // Use separate package maybe?
 

@@ -7,6 +7,21 @@ import (
 	"github.com/ws396/autobinance/modules/techanext"
 )
 
+func init() {
+	globals.AddStrategyDatakeys("ytmod", []string{
+		"HMA0",
+		"HMA1",
+		"MACDH0",
+		"MACDH1",
+		"stochRSI0",
+		"stochRSI1",
+		"stochRSIEMA0",
+		"stochRSIEMA1",
+		"upperBB",
+		"lowerBB",
+	})
+}
+
 type buyRuleYTMod struct {
 	HMA50       techan.Indicator
 	MACDH       techan.Indicator

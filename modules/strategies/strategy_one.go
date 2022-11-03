@@ -6,6 +6,17 @@ import (
 	"github.com/ws396/autobinance/modules/globals"
 )
 
+func init() {
+	globals.AddStrategyDatakeys("one", []string{
+		"MACD0",
+		"MACD1",
+		"RSI0",
+		"RSI1",
+		"upperBB",
+		"lowerBB",
+	})
+}
+
 type buyRuleOne struct {
 	MACD    techan.Indicator
 	RSI     techan.Indicator

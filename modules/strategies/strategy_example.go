@@ -5,6 +5,13 @@ import (
 	"github.com/ws396/autobinance/modules/globals"
 )
 
+func init() {
+	globals.AddStrategyDatakeys("example", []string{
+		"EMA0",
+		"EMA1",
+	})
+}
+
 type buyRuleExample struct {
 	EMA50  techan.Indicator
 	series *techan.TimeSeries

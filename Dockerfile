@@ -1,4 +1,4 @@
-FROM golang:1.17.5 as base
+FROM golang:1.18.2 as base
 
 FROM base as dev
 

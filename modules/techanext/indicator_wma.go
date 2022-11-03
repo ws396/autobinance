@@ -18,7 +18,6 @@ func NewWMAIndicator(indicator techan.Indicator, window int) techan.Indicator {
 }
 
 func (wma WMAIndicator) Calculate(index int) big.Decimal {
-	//closingPrices := techan.NewClosePriceIndicator(wma.series)
 	norm, sum := big.Decimal(big.ZERO), big.Decimal(big.ZERO)
 
 	for i := wma.window - 1; i >= 0; i-- {

@@ -46,5 +46,3 @@ func (ish innerSubHMAIndicator) Calculate(index int) big.Decimal {
 
 	return result
 }
-
-// Not quite how I wanted to do this, but, oh well, it works.

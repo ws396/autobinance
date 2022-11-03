@@ -7,6 +7,17 @@ import (
 	"github.com/ws396/autobinance/modules/techanext"
 )
 
+func init() {
+	globals.AddStrategyDatakeys("two", []string{
+		"MACD0",
+		"MACD1",
+		"stochRSI0",
+		"stochRSI1",
+		"upperBB",
+		"lowerBB",
+	})
+}
+
 type buyRuleTwo struct {
 	MACD     techan.Indicator
 	stochRSI techan.Indicator
