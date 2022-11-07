@@ -1,5 +1,7 @@
 package globals
 
+import "github.com/sdcoffey/techan"
+
 const (
 	Timeframe int    = 1
 	Buy       string = "BUY"
@@ -7,17 +9,24 @@ const (
 	Hold      string = "HOLD"
 )
 
+// Could also place everything below in strategies.go
 var (
-	Datakeys = map[string][]string{}
+	StrategiesInfo = map[string]StrategyInfo{}
 )
 
+type StrategyInfo struct {
+	Handler  func(*techan.TimeSeries) (string, map[string]string)
+	Datakeys []string
+}
+
 // Add error handling?
-func AddStrategyDatakeys(strategy string, datakeys []string) {
-	Datakeys[strategy] = datakeys
-	Datakeys[strategy] = append(Datakeys[strategy], "Current price",
+func AddStrategyInfo(strategy string, handler func(*techan.TimeSeries) (string, map[string]string), datakeys []string) {
+	datakeys = append(datakeys, "Current price",
 		"Time",
 		"Symbol",
 		"Decision",
 		"Strategy",
 	)
+
+	StrategiesInfo[strategy] = StrategyInfo{handler, datakeys}
 }

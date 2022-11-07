@@ -74,7 +74,7 @@ func (p *TxtWriter) WriteToLog(ch chan *orders.Order) {
 		data := <-ch
 		dataMap := orderToMap(data)
 
-		for _, v := range globals.Datakeys[data.Strategy] {
+		for _, v := range globals.StrategiesInfo[data.Strategy].Datakeys {
 			message += fmt.Sprint(v, ": ", dataMap[v], "\n")
 		}
 	}
@@ -93,11 +93,11 @@ func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
 	if errors.Is(err, os.ErrNotExist) {
 		f = excelize.NewFile()
 
-		for k, v := range globals.Datakeys {
+		for k, v := range globals.StrategiesInfo {
 			f.NewSheet(k)
 
 			pos := 0
-			for _, v2 := range v {
+			for _, v2 := range v.Datakeys {
 				f.SetCellValue(k, string(rune('A'+pos))+"1", v2)
 				pos++
 			}
@@ -125,7 +125,7 @@ func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
 		dataMap := orderToMap(data)
 		pos := 0
 
-		for _, v := range globals.Datakeys[data.Strategy] {
+		for _, v := range globals.StrategiesInfo[data.Strategy].Datakeys {
 			f.SetCellValue(data.Strategy, string(rune('A'+pos))+lastRow, dataMap[v])
 			pos++
 		}

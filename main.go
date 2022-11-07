@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -15,7 +14,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/muesli/reflow/indent"
 	"github.com/muesli/reflow/wordwrap"
-	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/modules/analysis"
 	"github.com/ws396/autobinance/modules/binancew-sim"
 	"github.com/ws396/autobinance/modules/db"
@@ -23,22 +21,14 @@ import (
 	"github.com/ws396/autobinance/modules/orders"
 	"github.com/ws396/autobinance/modules/output"
 	"github.com/ws396/autobinance/modules/settings"
-	"github.com/ws396/autobinance/modules/strategies"
 	"github.com/ws396/autobinance/modules/techanext"
 	"github.com/ws396/autobinance/modules/util"
 	"gorm.io/gorm"
 )
 
 var (
-	buyAmount           float64 = 50
-	availableStrategies         = map[string]func(*techan.TimeSeries) (string, map[string]string){
-		"example":    strategies.StrategyExample,
-		"one":        strategies.StrategyOne,
-		"two":        strategies.StrategyTwo,
-		"ytwilliams": strategies.StrategyYTWilliams,
-		"ytmod":      strategies.StrategyYTMod,
-	}
-	client *binancew.ClientExt
+	buyAmount float64 = 50
+	client    *binancew.ClientExt
 )
 
 func main() {
@@ -67,15 +57,16 @@ type errMsg error
 
 // All view-related data goes through model
 type model struct {
-	settings        settings.Settings
-	quitting        bool
-	choice          string
-	textInput       textinput.Model
-	width           int
-	info            string
-	err             error
-	strategyRunning bool
-	ticker          *time.Ticker
+	settings       settings.Settings
+	quitting       bool
+	choice         string
+	textInput      textinput.Model
+	width          int
+	info           string
+	err            error
+	tradingRunning bool
+	stopTrading    chan bool
+	ticker         *time.Ticker
 }
 
 func initialModel() model {
@@ -91,11 +82,12 @@ func initialModel() model {
 	ticker := time.NewTicker(time.Duration(globals.Timeframe) * time.Minute / 6)
 
 	return model{
-		settings:  settings,
-		choice:    "root",
-		textInput: ti,
-		err:       err,
-		ticker:    ticker,
+		settings:    settings,
+		choice:      "root",
+		textInput:   ti,
+		err:         err,
+		stopTrading: make(chan bool),
+		ticker:      ticker,
 	}
 }
 
@@ -136,6 +128,7 @@ func (m *model) Logic() {
 		return
 	}
 
+	// Could also use something like linked list structures here?
 	// Last choice after-render logic
 	switch m.choice {
 	case "2":
@@ -176,13 +169,15 @@ func (m *model) Logic() {
 	case "5":
 		util.WriteToLogMisc(client.GetAccount())
 	case "6":
-		prices, err := client.NewListPricesService().Do(context.Background())
-		if err != nil {
-			log.Panicln(err)
-			return
+		filesToRemove := []string{
+			output.Filename + ".txt",
+			output.Filename + ".xlsx",
+			"log_gorm.txt",
+			"log_misc.txt",
 		}
-
-		util.WriteToLogMisc(prices)
+		for _, path := range filesToRemove {
+			os.Remove(path)
+		}
 	case "7":
 		db.Client.Migrator().DropTable(&analysis.Analysis{})
 		db.Client.Migrator().DropTable(&settings.Setting{})
@@ -191,106 +186,110 @@ func (m *model) Logic() {
 		analysis.AutoMigrateAnalyses()
 		settings.AutoMigrateSettings()
 		orders.AutoMigrateOrders()
+	case "8":
+		if m.tradingRunning {
+			m.tradingRunning = false
+			m.stopTrading <- true
+		}
 	}
-
 }
 
 func (m *model) startTradingSession(writer output.Writer) {
-	if m.strategyRunning {
-		m.err = errors.New("err: the strategy is already running")
+	if m.tradingRunning {
+		m.err = errors.New("err: the trading is already running")
 		return
 	}
 
 	selectedStrategies := strings.Split(m.settings.SelectedStrategies.Value, ",")
 	selectedSymbols := strings.Split(m.settings.SelectedSymbols.Value, ",")
-	m.info = "Strategy execution started (you can still do other actions)"
-	m.strategyRunning = true
+	m.info = "Trading started (you can still do other actions)"
+	m.tradingRunning = true
 
-	// Some sort of context needed here?
 	go func() {
 		for {
-			<-m.ticker.C
-			dataChannel := make(chan *orders.Order, len(selectedStrategies)*len(selectedSymbols))
-			for _, symbol := range selectedSymbols {
-				go func(symbol string) {
-					klines, err := client.GetKlines(symbol, globals.Timeframe)
-					if err != nil {
-						m.err = err
-						return
-					}
+			select {
+			case <-m.stopTrading:
+				return
+			case <-m.ticker.C:
+				dataChannel := make(chan *orders.Order, len(selectedStrategies)*len(selectedSymbols))
+				for _, symbol := range selectedSymbols {
+					go func(symbol string) {
+						klines, err := client.GetKlines(symbol, globals.Timeframe)
+						if err != nil {
+							m.err = err
+							return
+						}
 
-					series := techanext.GetSeries(klines)
-					for _, strategy := range selectedStrategies {
-						go func(strategy string) {
-							decision, indicators := availableStrategies[strategy](series)
+						series := techanext.GetSeries(klines)
+						for _, strategy := range selectedStrategies {
+							go func(strategy string) {
+								decision, indicators := globals.StrategiesInfo[strategy].Handler(series)
 
-							// Might want to consider a different approach with a clearer logic for these DB calls
-							var foundOrder orders.Order
-							r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
-							if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
-								log.Panicln("1", r.Error)
-								m.err = r.Error // TEST BREAKS HERE
-								return
-							}
-
-							// I guess I assume that this table will not contain "Holds"
-							if foundOrder.Decision == globals.Sell && decision == globals.Sell {
-								m.err = errors.New("err: no recent buy has been done on this symbol to initiate sell")
-								return
-							} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
-								m.err = errors.New("err: this position is already bought")
-								return
-							}
-
-							var quantity float64
-							// Should depend on found order?
-							switch decision {
-							case globals.Buy, globals.Hold:
-								quantity = buyAmount / series.LastCandle().ClosePrice.Float()
-							case globals.Sell:
-								quantity = foundOrder.Quantity
-							}
-
-							price := series.LastCandle().ClosePrice.String()
-							// Getting the actual order from this might be useful, but keep in mind that GORM might not like the []*Fill field
-							// Could also just selectively add fields from this to orders.Order below instead
-							client.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
-
-							order := &orders.Order{
-								Strategy:   strategy,
-								Symbol:     symbol,
-								Decision:   decision,
-								Quantity:   quantity,
-								Price:      series.LastCandle().ClosePrice.Float() * quantity,
-								Indicators: indicators,
-								Time:       time.Now(),
-							}
-							util.WriteToLogMisc(order)
-
-							//if decision != globals.Hold {
-							dataChannel <- order
-							//}
-
-							if decision != globals.Hold {
-								r := db.Client.Table("orders").Create(order)
-								if r.Error != nil {
-									log.Panicln("2", r.Error)
+								// Might want to consider a different approach with a clearer logic for these DB calls
+								var foundOrder orders.Order
+								r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
+								if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
 									m.err = r.Error
+									return
 								}
-							}
 
-							// Maybe need to group this up with channels like writing to log below
-							err = analysis.UpdateOrCreateAnalysis(order)
-							if err != nil {
-								log.Panicln("3", err)
-								m.err = err
-							}
-						}(strategy)
-					}
-				}(symbol)
+								// I guess I assume that this table will not contain "Holds"
+								if foundOrder.Decision == globals.Sell && decision == globals.Sell {
+									m.err = errors.New("err: no recent buy has been done on this symbol to initiate sell")
+									return
+								} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
+									m.err = errors.New("err: this position is already bought")
+									return
+								}
+
+								var quantity float64
+								// Should depend on found order?
+								switch decision {
+								case globals.Buy, globals.Hold:
+									quantity = buyAmount / series.LastCandle().ClosePrice.Float()
+								case globals.Sell:
+									quantity = foundOrder.Quantity
+								}
+
+								price := series.LastCandle().ClosePrice.String()
+								// Getting the actual order from this might be useful, but keep in mind that GORM might not like the []*Fill field
+								// Could also just selectively add fields from this to orders.Order below instead
+								client.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
+
+								order := &orders.Order{
+									Strategy:   strategy,
+									Symbol:     symbol,
+									Decision:   decision,
+									Quantity:   quantity,
+									Price:      series.LastCandle().ClosePrice.Float() * quantity,
+									Indicators: indicators,
+									Time:       time.Now(),
+								}
+								util.WriteToLogMisc(order)
+
+								//if decision != globals.Hold {
+								dataChannel <- order
+								//}
+
+								if decision != globals.Hold {
+									r := db.Client.Table("orders").Create(order)
+									if r.Error != nil {
+										m.err = r.Error
+									}
+								}
+
+								// Maybe need to group this up with channels like writing to log below
+								err = analysis.UpdateOrCreateAnalysis(order)
+								if err != nil {
+									m.err = err
+								}
+							}(strategy)
+						}
+					}(symbol)
+				}
+
+				writer.WriteToLog(dataChannel)
 			}
-
-			writer.WriteToLog(dataChannel)
 		}
 	}()
 }
@@ -310,16 +309,23 @@ func chosenView(m model) string {
 
 	switch m.choice {
 	case "root":
+		tradingStatus := "OFF"
+		if m.tradingRunning {
+			tradingStatus = "ON"
+		}
+
 		msg = fmt.Sprint(
 			"THE GO-BINANCE WRAPPER IS IN SIMULATION MODE", "\n",
-			"AUTOBINANCE", "\n\n",
+			"AUTOBINANCE", "\n",
+			"Trading status: ", tradingStatus, "\n\n",
 			"1) Start trading session", "\n",
 			"2) Set strategies", "\n",
 			"3) Set trade symbols", "\n",
 			"4) Check klines", "\n",
 			"5) Check account", "\n",
-			"6) List trades", "\n",
-			"7) Recreate tables",
+			"6) Clear logs and trade history", "\n",
+			"7) Recreate tables", "\n",
+			"8) Quit trading session",
 		)
 	case "1":
 		msg = fmt.Sprint("Trading session started.")
@@ -327,10 +333,14 @@ func chosenView(m model) string {
 		msg = fmt.Sprint("Currently selected strategies: ", m.settings.SelectedStrategies.Value)
 	case "3":
 		msg = fmt.Sprint("Currently selected symbols: ", m.settings.SelectedSymbols.Value)
-	case "4", "5", "6":
+	case "4", "5":
 		msg = fmt.Sprint("Output in log_misc.txt")
+	case "6":
+		msg = fmt.Sprint("Logs cleared")
 	case "7":
 		msg = fmt.Sprint("All tables have been recreated")
+	case "8":
+		msg = fmt.Sprint("Trading session stopped.")
 	default:
 		msg = fmt.Sprint("Invalid choice (type \\q to go back to root)")
 	}
