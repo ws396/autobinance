@@ -3,7 +3,6 @@ package binancew
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"github.com/adshao/go-binance/v2"
 )
@@ -21,18 +20,7 @@ func NewExtClient(apiKey, secretKey string) *ClientExt {
 	return &ClientExt{binance.NewClient(apiKey, secretKey), []bool{}}
 }
 
-func (client *ClientExt) GetPrices() []*binance.SymbolPrice {
-	prices, err := client.NewListPricesService().Symbol("LTCBTC").
-		Do(context.Background())
-	if err != nil {
-		log.Panicln(err)
-		//return
-	}
-
-	return prices
-}
-
-func (client *ClientExt) CreateOrder(input, quantity, price string, orderType binance.SideType) *binance.CreateOrderResponse {
+func (client *ClientExt) CreateOrder(input, quantity, price string, orderType binance.SideType) (*binance.CreateOrderResponse, error) {
 	order, err := client.NewCreateOrderService().
 		Symbol(input).
 		Side(orderType).
@@ -42,22 +30,20 @@ func (client *ClientExt) CreateOrder(input, quantity, price string, orderType bi
 		Price(price).
 		Do(context.Background())
 	if err != nil {
-		log.Panicln(err)
-		return nil
+		return nil, err
 	}
 
-	return order
+	return order, nil
 }
 
-func (client *ClientExt) GetOrders() []*binance.Order {
-	orders, err := client.NewListOrdersService().Symbol("LTCBTC").
+func (client *ClientExt) GetOrders(symbol string) ([]*binance.Order, error) {
+	orders, err := client.NewListOrdersService().Symbol(symbol).
 		Do(context.Background(), binance.WithRecvWindow(10000))
 	if err != nil {
-		log.Panicln(err)
-		//return
+		return nil, err
 	}
 
-	return orders
+	return orders, nil
 }
 
 func (client *ClientExt) GetKlines(symbol string, timeframe int) ([]*binance.Kline, error) {
@@ -70,26 +56,29 @@ func (client *ClientExt) GetKlines(symbol string, timeframe int) ([]*binance.Kli
 	return klines, nil
 }
 
-func (client *ClientExt) GetAccount() *binance.Account {
+func (client *ClientExt) GetAccount() (*binance.Account, error) {
 	account, err := client.NewGetAccountService().Do(context.Background())
 	if err != nil {
-		log.Panicln(err)
-		//return
+		return nil, err
 	}
 
-	return account
+	return account, nil
 }
 
-func (client *ClientExt) GetCurrencies(symbol ...string) []binance.Balance {
+func (client *ClientExt) GetCurrencies(symbol ...string) ([]binance.Balance, error) {
 	result := []binance.Balance{}
-	balances := client.GetAccount().Balances
-	for i := range balances {
+	account, err := client.GetAccount()
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range account.Balances {
 		for _, v := range symbol {
-			if balances[i].Asset == v {
-				result = append(result, balances[i])
+			if account.Balances[i].Asset == v {
+				result = append(result, account.Balances[i])
 			}
 		}
 	}
 
-	return result
+	return result, nil
 }

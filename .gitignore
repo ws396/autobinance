@@ -4,4 +4,6 @@
 /log*
 /trade_history*
 /modules/strategies-auto
-/modules/strategies
+/modules/strategies/*
+!/modules/strategies/strategies.go
+!/modules/strategies/strategy_example.go

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"testing"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/ws396/autobinance/modules/binancew-sim"
+	"github.com/ws396/autobinance/modules/cmd"
 	"github.com/ws396/autobinance/modules/db"
 	"github.com/ws396/autobinance/modules/orders"
 	"github.com/ws396/autobinance/modules/settings"
@@ -17,16 +19,12 @@ import (
 )
 
 type mockWriter struct {
-	data *orders.Order
+	dataChan chan *orders.Order
 }
 
 func (p *mockWriter) WriteToLog(ch chan *orders.Order) {
-	/* 	for i := 0; i < cap(ch); i++ {
-		data := <-ch
-	} */ // Maybe should also check if it returned only one message through channel
-
-	p.data = <-ch
-	log.Println(p.data)
+	data := <-ch
+	p.dataChan <- data
 }
 
 func TestTrade(t *testing.T) {
@@ -39,8 +37,6 @@ func TestTrade(t *testing.T) {
 			}
 		*/
 
-		//matcherFunc := func(expectedSQL, actualSQL string) error { return nil }
-		//dbMock, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherFunc(matcherFunc)))
 		dbMock, mock, err := sqlmock.New()
 		if err != nil {
 			t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
@@ -86,23 +82,28 @@ func TestTrade(t *testing.T) {
 		if err != nil {
 			log.Panicln(err)
 		}
-
 		db.Client = database
 
-		client = binancew.NewExtClient("", "") // This prooobably shouldn't be done like this
-		model := model{
-			settings: settings.Settings{
+		client := binancew.NewExtClient("", "")
+		tickerChan := make(chan time.Time, 1)
+		model := cmd.Autobinance{
+			Client: client,
+			Settings: settings.Settings{
 				SelectedSymbols:    settings.Setting{ID: 0, Name: "selected_symbols", Value: "LTCBTC"},
 				SelectedStrategies: settings.Setting{ID: 0, Name: "selected_strategies", Value: "example"},
 			},
-			ticker: time.NewTicker(time.Second / 4),
+			TickerChan: tickerChan,
+		}
+		w := &mockWriter{
+			dataChan: make(chan *orders.Order, 1),
 		}
 
-		w := &mockWriter{}
-		model.startTradingSession(w)
+		model.StartTradingSession(w)
+		tickerChan <- time.Now()
+		data := <-w.dataChan
 
-		time.Sleep(time.Second)
-		got := w.data.Symbol
+		fmt.Println(data)
+		got := data.Symbol
 		want := "LTCBTC"
 
 		if got != want {

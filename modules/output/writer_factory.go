@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/ws396/autobinance/modules/globals"
 	"github.com/ws396/autobinance/modules/orders"
+	"github.com/ws396/autobinance/modules/strategies"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -74,7 +74,7 @@ func (p *TxtWriter) WriteToLog(ch chan *orders.Order) {
 		data := <-ch
 		dataMap := orderToMap(data)
 
-		for _, v := range globals.StrategiesInfo[data.Strategy].Datakeys {
+		for _, v := range strategies.StrategiesInfo[data.Strategy].Datakeys {
 			message += fmt.Sprint(v, ": ", dataMap[v], "\n")
 		}
 	}
@@ -93,7 +93,7 @@ func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
 	if errors.Is(err, os.ErrNotExist) {
 		f = excelize.NewFile()
 
-		for k, v := range globals.StrategiesInfo {
+		for k, v := range strategies.StrategiesInfo {
 			f.NewSheet(k)
 
 			pos := 0
@@ -109,8 +109,6 @@ func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
 			log.Panicln(err)
 			return
 		}
-
-		//return
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
@@ -125,7 +123,7 @@ func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
 		dataMap := orderToMap(data)
 		pos := 0
 
-		for _, v := range globals.StrategiesInfo[data.Strategy].Datakeys {
+		for _, v := range strategies.StrategiesInfo[data.Strategy].Datakeys {
 			f.SetCellValue(data.Strategy, string(rune('A'+pos))+lastRow, dataMap[v])
 			pos++
 		}

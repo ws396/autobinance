@@ -6,7 +6,7 @@ import (
 )
 
 func init() {
-	globals.AddStrategyInfo("example", StrategyExample, []string{
+	AddStrategyInfo("example", StrategyExample, []string{
 		"EMA0",
 		"EMA1",
 	})
