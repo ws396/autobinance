@@ -11,6 +11,7 @@ import (
 	"github.com/ws396/autobinance/modules/db"
 	"github.com/ws396/autobinance/modules/orders"
 	"github.com/ws396/autobinance/modules/settings"
+	"github.com/ws396/autobinance/modules/util"
 )
 
 func main() {
@@ -24,6 +25,16 @@ func main() {
 	settings.AutoMigrateSettings()
 	orders.AutoMigrateOrders()
 
+	f, err := util.OpenOrCreateFile("log_error.txt")
+	if err != nil {
+		log.Println(err)
+	}
+	defer f.Close()
+
+	log.SetOutput(f)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	// Could also serve the CLI. This would also open the opportunity to containerize it properly
 	p := tea.NewProgram(cmd.InitialModel(), tea.WithAltScreen())
 
 	if err := p.Start(); err != nil {

@@ -11,18 +11,18 @@ import (
 )
 
 type Analysis struct {
-	ID              uint          `json:"id" gorm:"primary_key;auto_increment"`
-	Strategy        string        `json:"strategy" validate:"required"`
-	Symbol          string        `json:"symbol" validate:"required"`
-	Buys            uint          `json:"buys"`
-	Sells           uint          `json:"sells"`
-	SuccessfulSells uint          `json:"successfulSells"`
-	ProfitUSD       float64       `json:"profitUSD"`
-	SuccessRate     float64       `json:"successRate"`
-	Timeframe       int           `json:"timeframe"`
-	ActiveTime      time.Duration `json:"activeTime"`
-	CreatedAt       time.Time     `json:"createdAt"`
-	UpdatedAt       time.Time     `json:"updatedAt"`
+	ID              uint      `json:"id" gorm:"primary_key;auto_increment"`
+	Strategy        string    `json:"strategy" validate:"required"`
+	Symbol          string    `json:"symbol" validate:"required"`
+	Buys            uint      `json:"buys"`
+	Sells           uint      `json:"sells"`
+	SuccessfulSells uint      `json:"successfulSells"`
+	ProfitUSD       float64   `json:"profitUSD"`
+	SuccessRate     float64   `json:"successRate"`
+	Timeframe       uint      `json:"timeframe"`
+	ActiveTime      uint      `json:"activeTime"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 func AutoMigrateAnalyses() {
@@ -74,7 +74,7 @@ func updateAnalysis(order *orders.Order, foundAnalysis *Analysis) error {
 	}
 
 	// Or calculate on demand. Could also just do UpdatedAt - CreatedAt
-	foundAnalysis.ActiveTime += time.Duration(globals.Timeframe) * time.Minute
+	foundAnalysis.ActiveTime += globals.Timeframe * 60
 
 	db.Client.Table("analyses").Save(foundAnalysis)
 

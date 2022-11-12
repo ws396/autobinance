@@ -2,7 +2,6 @@ package util
 
 import (
 	"encoding/json"
-	"errors"
 	"log"
 	"os"
 	"regexp"
@@ -39,12 +38,18 @@ func WriteToLogMisc(data ...interface{}) {
 }
 
 func OpenOrCreateFile(name string) (*os.File, error) {
-	f, err := os.OpenFile(name, os.O_WRONLY|os.O_APPEND, 0644)
-	if errors.Is(err, os.ErrNotExist) {
-		f, err = os.Create(name)
-		if err != nil {
-			return nil, err
+	/*
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_APPEND, 0644)
+		if errors.Is(err, os.ErrNotExist) {
+			f, err = os.Create(name)
+			if err != nil {
+				return nil, err
+			}
 		}
+	*/
+	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		return nil, err
 	}
 
 	return f, err

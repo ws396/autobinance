@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/muesli/reflow/indent"
 	"github.com/muesli/reflow/wordwrap"
+	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/modules/analysis"
 	"github.com/ws396/autobinance/modules/binancew-sim"
 	"github.com/ws396/autobinance/modules/db"
@@ -81,8 +82,7 @@ func (m Autobinance) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
-			m.quitting = true
-			return m, tea.Quit
+			return m.QuitApp()
 		case tea.KeyEnter:
 			m.Logic()
 			m.textInput.Reset()
@@ -138,13 +138,14 @@ func (m *Autobinance) Logic() {
 	case "3":
 		m.Settings.SelectedSymbols.Value = settings.Find(m.Settings.SelectedSymbols.Name)
 	case "4":
-		klines, err := m.Client.GetKlines("LTCBTC", globals.Timeframe)
-		if err != nil {
-			log.Panicln(err)
+		var foundAnalyses []analysis.Analysis
+		r := db.Client.Table("analyses").Find(&foundAnalyses)
+		if r.Error != nil {
+			m.err = r.Error
 			break
 		}
 
-		util.WriteToLogMisc(klines)
+		util.WriteToLogMisc(foundAnalyses)
 	case "5":
 		util.WriteToLogMisc(m.Client.GetCurrencies())
 	case "6":
@@ -153,6 +154,7 @@ func (m *Autobinance) Logic() {
 			output.Filename + ".xlsx",
 			"log_gorm.txt",
 			"log_misc.txt",
+			"log_error.txt",
 		}
 		for _, path := range filesToRemove {
 			os.Remove(path)
@@ -199,78 +201,29 @@ func (m *Autobinance) StartTradingSession(writer output.Writer) {
 						series := techanext.GetSeries(klines)
 						for _, strategy := range selectedStrategies {
 							go func(strategy string) {
-								decision, indicators := strategies.StrategiesInfo[strategy].Handler(series)
-
-								// Might want to consider a different approach with a clearer logic for these DB calls
-								var foundOrder orders.Order
-								r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
-								if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
-									m.err = r.Error
-									return
-								}
-
-								// I guess I assume that this table will not contain "Holds"
-								if foundOrder.Decision == globals.Sell && decision == globals.Sell {
-									m.err = errors.New("err: no recent buy has been done on this symbol to initiate sell")
-									return
-								} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
-									m.err = errors.New("err: this position is already bought")
-									return
-								}
-
-								var quantity float64
-								// Should depend on found order?
-								switch decision {
-								case globals.Buy, globals.Hold:
-									quantity = globals.BuyAmount / series.LastCandle().ClosePrice.Float()
-								case globals.Sell:
-									quantity = foundOrder.Quantity
-								}
-
-								price := series.LastCandle().ClosePrice.String()
-								// Getting the actual order from this might be useful, but keep in mind that GORM might not like the []*Fill field
-								// Could also just selectively add fields from this to orders.Order below instead
-								_, err := m.Client.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
+								order, err := m.Trade(strategy, symbol, series)
 								if err != nil {
-									m.err = err
-									return
+									log.Println(err)
 								}
 
-								order := &orders.Order{
-									Strategy:   strategy,
-									Symbol:     symbol,
-									Decision:   decision,
-									Quantity:   quantity,
-									Price:      series.LastCandle().ClosePrice.Float() * quantity,
-									Indicators: indicators,
-									Time:       time.Now(),
-								}
-								util.WriteToLogMisc(order)
-
-								//if decision != globals.Hold {
+								//if order.Decision != globals.Hold {
 								dataChannel <- order
 								//}
-
-								if decision != globals.Hold {
-									r := db.Client.Table("orders").Create(order)
-									if r.Error != nil {
-										m.err = r.Error
-										return
-									}
-								}
-
-								// Maybe need to group this up with channels like writing to log below
-								err = analysis.UpdateOrCreateAnalysis(order)
-								if err != nil {
-									m.err = err
-									return
-								}
 							}(strategy)
 						}
 					}(symbol)
 				}
 
-				writer.WriteToLog(dataChannel)
+				var orders []*orders.Order
+				for i := 0; i < cap(dataChannel); i++ {
+					data := <-dataChannel
+					if data != nil {
+						orders = append(orders, data)
+					}
+				}
+
+				util.WriteToLogMisc(orders)
+				writer.WriteToLog(orders)
 			}
 		}
 	}()
@@ -281,6 +234,74 @@ func (m *Autobinance) StopTradingSession() {
 		m.tradingRunning = false
 		m.stopTrading <- true
 	}
+}
+
+func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) (*orders.Order, error) {
+	decision, indicators := strategies.StrategiesInfo[strategy].Handler(series)
+
+	// Might want to consider a different approach with a clearer logic for these DB calls
+	var foundOrder orders.Order
+	r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
+	if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
+		return nil, r.Error
+	}
+
+	// I guess I assume that this table will not contain "Holds"
+	if foundOrder.Decision == globals.Sell && decision == globals.Sell {
+		//return nil, errors.New("err: no recent buy has been done on this symbol to initiate sell")
+		return nil, nil
+	} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
+		//return nil, errors.New("err: this position is already bought")
+		return nil, nil
+	}
+
+	var quantity float64
+	// Should depend on found order?
+	switch decision {
+	case globals.Buy, globals.Hold:
+		quantity = globals.BuyAmount / series.LastCandle().ClosePrice.Float()
+	case globals.Sell:
+		quantity = foundOrder.Quantity
+	}
+
+	price := series.LastCandle().ClosePrice.String()
+	// Getting the actual order from this might be useful, but keep in mind that GORM might not like the []*Fill field
+	// Could also just selectively add fields from this to orders.Order below instead
+	_, err := m.Client.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
+	if err != nil {
+		return nil, err
+	}
+
+	order := &orders.Order{
+		Strategy:   strategy,
+		Symbol:     symbol,
+		Decision:   decision,
+		Quantity:   quantity,
+		Price:      series.LastCandle().ClosePrice.Float() * quantity,
+		Indicators: indicators,
+		Time:       time.Now(),
+	}
+
+	if decision != globals.Hold {
+		r := db.Client.Table("orders").Create(order)
+		if r.Error != nil {
+			return nil, r.Error
+		}
+	}
+
+	// Maybe need to group this up somehow?
+	err = analysis.UpdateOrCreateAnalysis(order)
+	if err != nil {
+		return nil, err
+	}
+
+	return order, nil
+}
+
+func (m *Autobinance) QuitApp() (tea.Model, tea.Cmd) {
+	m.quitting = true
+
+	return m, tea.Quit
 }
 
 // The main view, which just calls the appropriate sub-view
@@ -310,12 +331,13 @@ func chosenView(m Autobinance) string {
 			"1) Start trading session", "\n",
 			"2) Set strategies", "\n",
 			"3) Set trade symbols", "\n",
-			"4) Check klines", "\n",
+			"4) Write analyses to log", "\n",
 			"5) Check account", "\n",
 			"6) Clear logs and trade history", "\n",
 			"7) Recreate tables", "\n",
 			"8) Quit trading session",
 		)
+	// Most of these don't really need to be a separate view btw. Use model.info more.
 	case "1":
 		msg = fmt.Sprint("Trading session started.")
 	case "2":

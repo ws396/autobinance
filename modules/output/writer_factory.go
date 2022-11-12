@@ -27,7 +27,7 @@ type Creator interface {
 }
 
 type Writer interface {
-	WriteToLog(chan *orders.Order)
+	WriteToLog([]*orders.Order)
 }
 
 type ConcreteWriterCreator struct {
@@ -55,7 +55,7 @@ func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
 type TxtWriter struct {
 }
 
-func (p *TxtWriter) WriteToLog(ch chan *orders.Order) {
+func (p *TxtWriter) WriteToLog(orders []*orders.Order) {
 	f, err := os.OpenFile(Filename+".txt", os.O_WRONLY|os.O_APPEND, 0644)
 	if errors.Is(err, os.ErrNotExist) {
 		f, err = os.Create(Filename + ".txt")
@@ -70,8 +70,7 @@ func (p *TxtWriter) WriteToLog(ch chan *orders.Order) {
 		"----------", "\n",
 	)
 
-	for i := 0; i < cap(ch); i++ {
-		data := <-ch
+	for _, data := range orders {
 		dataMap := orderToMap(data)
 
 		for _, v := range strategies.StrategiesInfo[data.Strategy].Datakeys {
@@ -88,7 +87,7 @@ func (p *TxtWriter) WriteToLog(ch chan *orders.Order) {
 type ExcelWriter struct {
 }
 
-func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
+func (p *ExcelWriter) WriteToLog(orders []*orders.Order) {
 	f, err := excelize.OpenFile(Filename + ".xlsx")
 	if errors.Is(err, os.ErrNotExist) {
 		f = excelize.NewFile()
@@ -116,8 +115,7 @@ func (p *ExcelWriter) WriteToLog(ch chan *orders.Order) {
 		}
 	}()
 
-	for i := 0; i < cap(ch); i++ {
-		data := <-ch
+	for _, data := range orders {
 		rows, _ := f.GetRows(data.Strategy)
 		lastRow := fmt.Sprint(len(rows) + 1)
 		dataMap := orderToMap(data)

@@ -1,4 +1,4 @@
-package main
+package main_test
 
 import (
 	"fmt"
@@ -18,13 +18,13 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// Remove channels entirely?
 type mockWriter struct {
-	dataChan chan *orders.Order
+	dataChan chan []*orders.Order
 }
 
-func (p *mockWriter) WriteToLog(ch chan *orders.Order) {
-	data := <-ch
-	p.dataChan <- data
+func (p *mockWriter) WriteToLog(orders []*orders.Order) {
+	p.dataChan <- orders
 }
 
 func TestTrade(t *testing.T) {
@@ -95,7 +95,7 @@ func TestTrade(t *testing.T) {
 			TickerChan: tickerChan,
 		}
 		w := &mockWriter{
-			dataChan: make(chan *orders.Order, 1),
+			dataChan: make(chan []*orders.Order, 1),
 		}
 
 		model.StartTradingSession(w)
@@ -103,7 +103,7 @@ func TestTrade(t *testing.T) {
 		data := <-w.dataChan
 
 		fmt.Println(data)
-		got := data.Symbol
+		got := data[0].Symbol
 		want := "LTCBTC"
 
 		if got != want {

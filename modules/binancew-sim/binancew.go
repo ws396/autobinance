@@ -23,7 +23,7 @@ func (client *ClientExt) GetOrders(symbol string) ([]*binance.Order, error) {
 	return nil, nil
 }
 
-func (client *ClientExt) GetKlines(symbol string, timeframe int) ([]*binance.Kline, error) {
+func (client *ClientExt) GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error) {
 	klines, err := client.NewKlinesService().Symbol(symbol).
 		Interval(fmt.Sprint(timeframe) + "m").Do(context.Background())
 	if err != nil {
