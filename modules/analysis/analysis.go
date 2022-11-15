@@ -20,7 +20,6 @@ type Analysis struct {
 	ProfitUSD       float64   `json:"profitUSD"`
 	SuccessRate     float64   `json:"successRate"`
 	Timeframe       uint      `json:"timeframe"`
-	ActiveTime      uint      `json:"activeTime"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
 }
@@ -38,9 +37,9 @@ func UpdateOrCreateAnalysis(order *orders.Order) error {
 			if err != nil {
 				return err
 			}
-		} else if order.Decision == globals.Sell {
+		} /*  else if order.Decision == globals.Sell {
 			return errors.New("err: the first order type of symbol should always be buy")
-		}
+		} */
 	} else if r.Error != nil {
 		return r.Error
 	} else {
@@ -73,9 +72,6 @@ func updateAnalysis(order *orders.Order, foundAnalysis *Analysis) error {
 		foundAnalysis.SuccessRate = float64(foundAnalysis.SuccessfulSells) / float64(foundAnalysis.Sells)
 	}
 
-	// Or calculate on demand. Could also just do UpdatedAt - CreatedAt
-	foundAnalysis.ActiveTime += globals.Timeframe * 60
-
 	db.Client.Table("analyses").Save(foundAnalysis)
 
 	return nil
@@ -91,7 +87,6 @@ func createAnalysis(strategy, symbol string, price float64) error {
 		ProfitUSD:       -price, // And this
 		SuccessRate:     0,
 		Timeframe:       globals.Timeframe,
-		ActiveTime:      0,
 	})
 	if r.Error != nil {
 		return r.Error
