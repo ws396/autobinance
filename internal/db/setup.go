@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/ws396/autobinance/modules/util"
+	"github.com/ws396/autobinance/internal/util"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

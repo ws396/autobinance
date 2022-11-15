@@ -2,7 +2,7 @@ package strategies
 
 import (
 	"github.com/sdcoffey/techan"
-	"github.com/ws396/autobinance/modules/globals"
+	"github.com/ws396/autobinance/internal/globals"
 )
 
 func init() {

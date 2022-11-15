@@ -6,7 +6,7 @@ import (
 	"github.com/adshao/go-binance/v2"
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
-	"github.com/ws396/autobinance/modules/globals"
+	"github.com/ws396/autobinance/internal/globals"
 )
 
 func GetSeries(klines []*binance.Kline) *techan.TimeSeries {

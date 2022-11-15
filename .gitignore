@@ -3,7 +3,7 @@
 /*.xlsx
 /log*
 /trade_history*
-/modules/strategies-auto
-/modules/strategies/*
-!/modules/strategies/strategies.go
-!/modules/strategies/strategy_example.go
+/internal/strategies-auto
+/internal/strategies/*
+!/internal/strategies/strategies.go
+!/internal/strategies/strategy_example.go

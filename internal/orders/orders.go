@@ -3,7 +3,7 @@ package orders
 import (
 	"time"
 
-	"github.com/ws396/autobinance/modules/db"
+	"github.com/ws396/autobinance/internal/db"
 )
 
 // Btw, it might be more accurate to call this trades, not orders, because I don't think I'll be verifying the order anyway.

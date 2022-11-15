@@ -4,9 +4,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ws396/autobinance/modules/db"
-	"github.com/ws396/autobinance/modules/globals"
-	"github.com/ws396/autobinance/modules/orders"
+	"github.com/ws396/autobinance/internal/db"
+	"github.com/ws396/autobinance/internal/globals"
+	"github.com/ws396/autobinance/internal/orders"
 	"gorm.io/gorm"
 )
 

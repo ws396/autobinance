@@ -6,12 +6,12 @@ import (
 	// Might be better to eventually get rid of this dependency here
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
-	"github.com/ws396/autobinance/modules/analysis"
-	"github.com/ws396/autobinance/modules/cmd"
-	"github.com/ws396/autobinance/modules/db"
-	"github.com/ws396/autobinance/modules/orders"
-	"github.com/ws396/autobinance/modules/settings"
-	"github.com/ws396/autobinance/modules/util"
+	"github.com/ws396/autobinance/internal/analysis"
+	"github.com/ws396/autobinance/cmd"
+	"github.com/ws396/autobinance/internal/db"
+	"github.com/ws396/autobinance/internal/orders"
+	"github.com/ws396/autobinance/internal/settings"
+	"github.com/ws396/autobinance/internal/util"
 )
 
 func main() {

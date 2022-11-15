@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log"
 
-	"github.com/ws396/autobinance/modules/db"
+	"github.com/ws396/autobinance/internal/db"
 	"gorm.io/gorm"
 )
 

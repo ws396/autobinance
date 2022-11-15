@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/ws396/autobinance/modules/orders"
-	"github.com/ws396/autobinance/modules/strategies"
+	"github.com/ws396/autobinance/internal/orders"
+	"github.com/ws396/autobinance/internal/strategies"
 	"github.com/xuri/excelize/v2"
 )
 
