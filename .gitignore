@@ -1,8 +1,10 @@
 /.*
+!/.env.example
 /tmp
 /*.xlsx
 /log*
 /trade_history*
+
 /internal/strategies-auto
 /internal/strategies/*
 !/internal/strategies/strategies.go

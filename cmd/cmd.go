@@ -11,11 +11,12 @@ import (
 	"github.com/adshao/go-binance/v2"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/indent"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/internal/analysis"
-	"github.com/ws396/autobinance/internal/binancew-sim"
+	"github.com/ws396/autobinance/internal/binancew"
 	"github.com/ws396/autobinance/internal/db"
 	"github.com/ws396/autobinance/internal/globals"
 	"github.com/ws396/autobinance/internal/orders"
@@ -39,7 +40,7 @@ type Autobinance struct {
 	err            error
 	tradingRunning bool
 	stopTrading    chan bool
-	Client         *binancew.ClientExt
+	Client         binancew.ExchangeClient
 	Settings       settings.Settings
 	TickerChan     <-chan time.Time
 }
@@ -58,7 +59,13 @@ func InitialModel() Autobinance {
 
 	apiKey := os.Getenv("API_KEY")
 	secretKey := os.Getenv("SECRET_KEY")
-	client := binancew.NewExtClient(apiKey, secretKey)
+
+	var client binancew.ExchangeClient
+	if globals.SimulationMode {
+		client = binancew.NewExtClientSim(apiKey, secretKey)
+	} else {
+		client = binancew.NewExtClient(apiKey, secretKey)
+	}
 
 	return Autobinance{
 		choice:      "root",
@@ -102,6 +109,9 @@ func (m Autobinance) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Autobinance) Logic() {
+	m.err = nil
+	m.info = ""
+
 	if m.textInput.Value() == "\\q" && m.choice != "root" {
 		m.choice = "root"
 		return
@@ -119,18 +129,16 @@ func (m *Autobinance) Logic() {
 	}
 
 	// Choice transition (Might also want to check here if previous step actually needs a transition)
-	if m.err == nil {
-		switch m.choice {
-		case "root":
-			m.choice = m.textInput.Value()
-		default:
-			m.choice = "root"
-		}
+	switch m.choice {
+	case "root":
+		m.choice = m.textInput.Value()
+	default:
+		m.choice = "root"
 	}
 
 	// New choice pre-render logic
 	switch m.choice {
-	case "1": // Keep in mind that with current approach the unsold assets will remain unsold when the app stops
+	case "1":
 		excelWriter := output.NewWriterCreator().CreateWriter(output.Excel)
 		m.StartTradingSession(excelWriter)
 	case "2":
@@ -175,12 +183,20 @@ func (m *Autobinance) Logic() {
 func (m *Autobinance) StartTradingSession(writer output.Writer) {
 	if m.tradingRunning {
 		m.err = errors.New("err: the trading is already running")
+	}
+	if m.Settings.SelectedStrategies.Value == "" {
+		m.err = errors.New("err: could not receive trading strategies")
+	}
+	if m.Settings.SelectedSymbols.Value == "" {
+		m.err = errors.New("err: could not receive trading symbols")
+	}
+	if m.err != nil {
+		m.choice = "root"
 		return
 	}
 
 	selectedStrategies := strings.Split(m.Settings.SelectedStrategies.Value, ",")
 	selectedSymbols := strings.Split(m.Settings.SelectedSymbols.Value, ",")
-	m.info = "Trading started (you can still do other actions)"
 	m.tradingRunning = true
 
 	go func() {
@@ -233,6 +249,10 @@ func (m *Autobinance) StopTradingSession() {
 	if m.tradingRunning {
 		m.tradingRunning = false
 		m.stopTrading <- true
+		m.info = ""
+	} else {
+		m.choice = "root"
+		m.info = "Trading is not running"
 	}
 }
 
@@ -247,7 +267,7 @@ func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) 
 	}
 
 	// I guess I assume that this table will not contain "Holds"
-	if foundOrder.Decision == globals.Sell && decision == globals.Sell {
+	if (foundOrder.Decision == globals.Sell || foundOrder.Decision == "") && decision == globals.Sell {
 		//return nil, errors.New("err: no recent buy has been done on this symbol to initiate sell")
 		return nil, nil
 	} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
@@ -311,7 +331,20 @@ func (m Autobinance) View() string {
 		errMsg = m.err.Error()
 	}
 
-	return wordwrap.String(indent.String("\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+m.info+"\n\n"+errMsg, 4), m.width)
+	errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	err := errStyle.Render(errMsg)
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	help := helpStyle.Render("\\q - back to root")
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	border := borderStyle.Render(" ───────────────────────────────────────────")
+
+	return wordwrap.String(
+		indent.String(
+			"\n"+chosenView(m)+"\n\n"+m.textInput.View()+"\n\n"+border+"\n"+m.info+"\n"+err+"\n"+help,
+			4,
+		),
+		m.width,
+	)
 }
 
 func chosenView(m Autobinance) string {
@@ -324,8 +357,13 @@ func chosenView(m Autobinance) string {
 			tradingStatus = "ON"
 		}
 
+		simulationStatus := ""
+		if globals.SimulationMode {
+			simulationStatus = "THE GO-BINANCE WRAPPER IS IN SIMULATION MODE\n"
+		}
+
 		msg = fmt.Sprint(
-			"THE GO-BINANCE WRAPPER IS IN SIMULATION MODE", "\n",
+			simulationStatus,
 			"AUTOBINANCE", "\n",
 			"Trading status: ", tradingStatus, "\n\n",
 			"1) Start trading session", "\n",
@@ -339,7 +377,7 @@ func chosenView(m Autobinance) string {
 		)
 	// Most of these don't really need to be a separate view btw. Use model.info more.
 	case "1":
-		msg = fmt.Sprint("Trading session started.")
+		msg = fmt.Sprint("Trading session started (you can still do other actions).")
 	case "2":
 		msg = fmt.Sprint("Currently selected strategies: ", m.Settings.SelectedStrategies.Value)
 	case "3":
@@ -353,7 +391,7 @@ func chosenView(m Autobinance) string {
 	case "8":
 		msg = fmt.Sprint("Trading session stopped.")
 	default:
-		msg = fmt.Sprint("Invalid choice (type \\q to go back to root)")
+		msg = fmt.Sprint("Invalid choice")
 	}
 
 	return msg

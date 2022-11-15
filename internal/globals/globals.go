@@ -7,3 +7,7 @@ const (
 	Sell      string  = "SELL"
 	Hold      string  = "HOLD"
 )
+
+var (
+	SimulationMode = true
+)

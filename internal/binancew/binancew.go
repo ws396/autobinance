@@ -7,17 +7,24 @@ import (
 	"github.com/adshao/go-binance/v2"
 )
 
+type ExchangeClient interface {
+	CreateOrder(input, quantity, price string, orderType binance.SideType) (*binance.CreateOrderResponse, error)
+	GetOrders(symbol string) ([]*binance.Order, error)
+	GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error)
+	GetAccount() (*binance.Account, error)
+	GetCurrencies(symbol ...string) ([]binance.Balance, error)
+}
+
 type ClientExt struct {
 	*binance.Client
-	placedOrders []bool
 }
 
 func init() {
 	binance.UseTestnet = true
 }
 
-func NewExtClient(apiKey, secretKey string) *ClientExt {
-	return &ClientExt{binance.NewClient(apiKey, secretKey), []bool{}}
+func NewExtClient(apiKey, secretKey string) ExchangeClient {
+	return &ClientExt{binance.NewClient(apiKey, secretKey)}
 }
 
 func (client *ClientExt) CreateOrder(input, quantity, price string, orderType binance.SideType) (*binance.CreateOrderResponse, error) {

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/ws396/autobinance/internal/binancew-sim"
 	"github.com/ws396/autobinance/cmd"
+	"github.com/ws396/autobinance/internal/binancew"
 	"github.com/ws396/autobinance/internal/db"
 	"github.com/ws396/autobinance/internal/orders"
 	"github.com/ws396/autobinance/internal/settings"
@@ -30,7 +30,7 @@ func TestTrade(t *testing.T) {
 	t.Run("successfully starts trading session and attempts one trade", func(t *testing.T) {
 		setupMockDB(t, mockExpect)
 
-		client := binancew.NewExtClient("", "")
+		client := binancew.NewExtClientSim("", "")
 		tickerChan := make(chan time.Time, 1)
 		model := cmd.Autobinance{
 			Client: client,
