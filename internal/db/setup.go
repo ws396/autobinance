@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/ws396/autobinance/internal/util"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -15,7 +14,7 @@ import (
 var Client *gorm.DB
 
 func ConnectDB() {
-	f, err := util.OpenOrCreateFile("log_gorm.txt")
+	f, err := os.OpenFile("log_gorm.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatalln(err)
 	}

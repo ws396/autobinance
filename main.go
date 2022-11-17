@@ -2,16 +2,16 @@ package main
 
 import (
 	"log"
+	"os"
 
 	// Might be better to eventually get rid of this dependency here
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
-	"github.com/ws396/autobinance/internal/analysis"
 	"github.com/ws396/autobinance/cmd"
+	"github.com/ws396/autobinance/internal/analysis"
 	"github.com/ws396/autobinance/internal/db"
 	"github.com/ws396/autobinance/internal/orders"
 	"github.com/ws396/autobinance/internal/settings"
-	"github.com/ws396/autobinance/internal/util"
 )
 
 func main() {
@@ -25,7 +25,7 @@ func main() {
 	settings.AutoMigrateSettings()
 	orders.AutoMigrateOrders()
 
-	f, err := util.OpenOrCreateFile("log_error.txt")
+	f, err := os.OpenFile("log_error.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		log.Println(err)
 	}

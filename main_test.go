@@ -34,7 +34,7 @@ func TestTrade(t *testing.T) {
 		tickerChan := make(chan time.Time, 1)
 		model := cmd.Autobinance{
 			Client: client,
-			Settings: settings.Settings{
+			Settings: &settings.Settings{
 				SelectedSymbols:    settings.Setting{ID: 0, Name: "selected_symbols", Value: "LTCBTC"},
 				SelectedStrategies: settings.Setting{ID: 0, Name: "selected_strategies", Value: "example"},
 			},

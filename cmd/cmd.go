@@ -28,6 +28,12 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
+	helpStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	borderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+)
+
 type errMsg error
 
 // All view-related data goes through Autobinance
@@ -38,10 +44,11 @@ type Autobinance struct {
 	width          int
 	info           string
 	err            error
+	help           string
 	tradingRunning bool
 	stopTrading    chan bool
 	Client         binancew.ExchangeClient
-	Settings       settings.Settings
+	Settings       *settings.Settings
 	TickerChan     <-chan time.Time
 }
 
@@ -50,9 +57,6 @@ func InitialModel() Autobinance {
 	ti.Focus()
 	//ti.CharLimit = 156
 	ti.Width = 80
-
-	// Pre-load all settings here?
-	settings, err := settings.GetSettings()
 
 	// Feels a bit wrong to put it here. But then again, it IS directly related to the main business logic of this app
 	ticker := time.NewTicker(time.Duration(globals.Timeframe) * time.Minute / 6)
@@ -67,13 +71,26 @@ func InitialModel() Autobinance {
 		client = binancew.NewExtClient(apiKey, secretKey)
 	}
 
+	// Pre-load all settings here?
+	s, err := settings.GetSettings()
+	if err != nil {
+		log.Println(err)
+	}
+
+	var keys []string
+	for k := range strategies.StrategiesInfo {
+		keys = append(keys, k)
+	}
+	s.AvailableStrategies.Value = strings.Join(keys, ",")
+
 	return Autobinance{
 		choice:      "root",
 		textInput:   ti,
 		err:         err,
+		help:        "\\q - back to root",
 		stopTrading: make(chan bool),
 		Client:      client,
-		Settings:    settings,
+		Settings:    s,
 		TickerChan:  ticker.C,
 	}
 }
@@ -109,6 +126,7 @@ func (m Autobinance) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Autobinance) Logic() {
+	// Need to review the error flow
 	m.err = nil
 	m.info = ""
 
@@ -121,9 +139,29 @@ func (m *Autobinance) Logic() {
 	// Last choice after-render logic
 	switch m.choice {
 	case "2":
+		availableStrategies := strings.Split(m.Settings.AvailableStrategies.Value, ",")
+		selectedStrategies := strings.Split(m.textInput.Value(), ",")
+
+		for _, v := range selectedStrategies {
+			if !util.Contains(availableStrategies, v) {
+				m.err = errors.New("err: entered wrong strategy names")
+				return
+			}
+		}
+
 		settings.Update(m.Settings.SelectedStrategies.Name, m.textInput.Value())
 		m.Settings.SelectedStrategies.Value = m.textInput.Value()
 	case "3":
+		symbols := m.Client.GetAllSymbols()
+		selectedSymbols := strings.Split(m.textInput.Value(), ",")
+
+		for _, v := range selectedSymbols {
+			if !util.Contains(symbols, v) {
+				m.err = errors.New("err: entered wrong symbol pairs")
+				return
+			}
+		}
+
 		settings.Update(m.Settings.SelectedSymbols.Name, m.textInput.Value())
 		m.Settings.SelectedSymbols.Value = m.textInput.Value()
 	}
@@ -183,20 +221,23 @@ func (m *Autobinance) Logic() {
 func (m *Autobinance) StartTradingSession(writer output.Writer) {
 	if m.tradingRunning {
 		m.err = errors.New("err: the trading is already running")
+		m.choice = "root"
+		return
 	}
 	if m.Settings.SelectedStrategies.Value == "" {
 		m.err = errors.New("err: could not receive trading strategies")
+		m.choice = "root"
+		return
 	}
 	if m.Settings.SelectedSymbols.Value == "" {
 		m.err = errors.New("err: could not receive trading symbols")
-	}
-	if m.err != nil {
 		m.choice = "root"
 		return
 	}
 
 	selectedStrategies := strings.Split(m.Settings.SelectedStrategies.Value, ",")
 	selectedSymbols := strings.Split(m.Settings.SelectedSymbols.Value, ",")
+
 	m.tradingRunning = true
 
 	go func() {
@@ -222,9 +263,7 @@ func (m *Autobinance) StartTradingSession(writer output.Writer) {
 									log.Println(err)
 								}
 
-								//if order.Decision != globals.Hold {
 								dataChannel <- order
-								//}
 							}(strategy)
 						}
 					}(symbol)
@@ -233,12 +272,14 @@ func (m *Autobinance) StartTradingSession(writer output.Writer) {
 				var orders []*orders.Order
 				for i := 0; i < cap(dataChannel); i++ {
 					data := <-dataChannel
-					if data != nil {
+
+					util.WriteToLogMisc(data)
+
+					if data != nil && data.Decision != globals.Hold {
 						orders = append(orders, data)
 					}
 				}
 
-				util.WriteToLogMisc(orders)
 				writer.WriteToLog(orders)
 			}
 		}
@@ -249,7 +290,6 @@ func (m *Autobinance) StopTradingSession() {
 	if m.tradingRunning {
 		m.tradingRunning = false
 		m.stopTrading <- true
-		m.info = ""
 	} else {
 		m.choice = "root"
 		m.info = "Trading is not running"
@@ -331,11 +371,8 @@ func (m Autobinance) View() string {
 		errMsg = m.err.Error()
 	}
 
-	errStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555"))
 	err := errStyle.Render(errMsg)
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
-	help := helpStyle.Render("\\q - back to root")
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	help := helpStyle.Render(m.help)
 	border := borderStyle.Render(" ───────────────────────────────────────────")
 
 	return wordwrap.String(
@@ -379,9 +416,16 @@ func chosenView(m Autobinance) string {
 	case "1":
 		msg = fmt.Sprint("Trading session started (you can still do other actions).")
 	case "2":
-		msg = fmt.Sprint("Currently selected strategies: ", m.Settings.SelectedStrategies.Value)
+		msg = fmt.Sprint(
+			"Available strategies: ", m.Settings.AvailableStrategies.Value, "\n",
+			"Currently selected strategies: ", m.Settings.SelectedStrategies.Value, "\n",
+			"Enter new strategy set (ex. example,one):",
+		)
 	case "3":
-		msg = fmt.Sprint("Currently selected symbols: ", m.Settings.SelectedSymbols.Value)
+		msg = fmt.Sprint(
+			"Currently selected symbols: ", m.Settings.SelectedSymbols.Value, "\n",
+			"Enter new symbols set (ex. LTCBTC,ETHBTC):",
+		)
 	case "4", "5":
 		msg = fmt.Sprint("Output in log_misc.txt")
 	case "6":

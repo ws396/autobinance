@@ -25,7 +25,7 @@ func WriteToLogMisc(data ...interface{}) {
 		log.Panicln(err)
 	}
 
-	f, err := OpenOrCreateFile("log_misc.txt")
+	f, err := os.OpenFile("log_misc.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -37,28 +37,20 @@ func WriteToLogMisc(data ...interface{}) {
 	}
 }
 
-func OpenOrCreateFile(name string) (*os.File, error) {
-	/*
-		f, err := os.OpenFile(name, os.O_WRONLY|os.O_APPEND, 0644)
-		if errors.Is(err, os.ErrNotExist) {
-			f, err = os.Create(name)
-			if err != nil {
-				return nil, err
-			}
-		}
-	*/
-	f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-	if err != nil {
-		return nil, err
-	}
-
-	return f, err
-}
-
 func IsRunningInContainer() bool {
 	if _, err := os.Stat("/.dockerenv"); err != nil {
 		return false
 	}
 
 	return true
+}
+
+func Contains[T comparable](slice []T, el T) bool {
+	for _, v := range slice {
+		if v == el {
+			return true
+		}
+	}
+
+	return false
 }

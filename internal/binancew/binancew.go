@@ -3,8 +3,15 @@ package binancew
 import (
 	"context"
 	"fmt"
+	"log"
+	"sync"
 
 	"github.com/adshao/go-binance/v2"
+)
+
+var (
+	once    sync.Once
+	symbols []string
 )
 
 type ExchangeClient interface {
@@ -13,6 +20,7 @@ type ExchangeClient interface {
 	GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error)
 	GetAccount() (*binance.Account, error)
 	GetCurrencies(symbol ...string) ([]binance.Balance, error)
+	GetAllSymbols() []string
 }
 
 type ClientExt struct {
@@ -88,4 +96,19 @@ func (client *ClientExt) GetCurrencies(symbol ...string) ([]binance.Balance, err
 	}
 
 	return result, nil
+}
+
+func (client *ClientExt) GetAllSymbols() []string {
+	once.Do(func() {
+		info, err := client.NewExchangeInfoService().Do(context.Background())
+		if err != nil {
+			log.Panicln(err)
+		}
+
+		for _, v := range info.Symbols {
+			symbols = append(symbols, v.Symbol)
+		}
+	})
+
+	return symbols
 }

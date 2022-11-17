@@ -1,10 +1,11 @@
 package binancew
 
 import (
-	"context"
-	"fmt"
-
 	"github.com/adshao/go-binance/v2"
+)
+
+var (
+	refClient = NewExtClient("", "")
 )
 
 type ClientExtSim struct {
@@ -24,13 +25,7 @@ func (client *ClientExtSim) GetOrders(symbol string) ([]*binance.Order, error) {
 }
 
 func (client *ClientExtSim) GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error) {
-	klines, err := client.NewKlinesService().Symbol(symbol).
-		Interval(fmt.Sprint(timeframe) + "m").Do(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	return klines, nil
+	return refClient.GetKlines(symbol, timeframe)
 }
 
 func (client *ClientExtSim) GetAccount() (*binance.Account, error) {
@@ -39,4 +34,8 @@ func (client *ClientExtSim) GetAccount() (*binance.Account, error) {
 
 func (client *ClientExtSim) GetCurrencies(symbol ...string) ([]binance.Balance, error) {
 	return nil, nil
+}
+
+func (client *ClientExtSim) GetAllSymbols() []string {
+	return refClient.GetAllSymbols()
 }
