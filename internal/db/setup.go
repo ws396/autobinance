@@ -6,9 +6,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/ws396/autobinance/internal/globals"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 var Client *gorm.DB
@@ -29,6 +31,16 @@ func ConnectDB() {
 		},
 	)
 
+	config := &gorm.Config{
+		Logger: newLogger,
+	}
+
+	if globals.SimulationMode {
+		config.NamingStrategy = schema.NamingStrategy{
+			TablePrefix: "sim_",
+		}
+	}
+
 	database, err := gorm.Open(postgres.New(postgres.Config{
 		DSN: fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
 			os.Getenv("PGSQL_HOST"),
@@ -38,9 +50,7 @@ func ConnectDB() {
 			os.Getenv("PGSQL_PASS"),
 		),
 		PreferSimpleProtocol: true, // disables implicit prepared statement usage. By default pgx automatically uses the extended protocol
-	}), &gorm.Config{
-		Logger: newLogger,
-	})
+	}), config)
 	if err != nil {
 		log.Panicln(err)
 	}

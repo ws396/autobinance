@@ -30,7 +30,7 @@ func AutoMigrateAnalyses() {
 
 func UpdateOrCreateAnalysis(order *orders.Order) error {
 	var foundAnalysis Analysis
-	r := db.Client.Table("analyses").First(&foundAnalysis, "strategy = ? AND symbol = ?", order.Strategy, order.Symbol)
+	r := db.Client.First(&foundAnalysis, "strategy = ? AND symbol = ?", order.Strategy, order.Symbol)
 	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
 		if order.Decision == globals.Buy {
 			err := createAnalysis(order.Strategy, order.Symbol, order.Price)
@@ -58,7 +58,7 @@ func updateAnalysis(order *orders.Order, foundAnalysis *Analysis) error {
 		foundAnalysis.ProfitUSD -= order.Price
 	} else if order.Decision == globals.Sell {
 		var foundOrder orders.Order
-		r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", order.Strategy, order.Symbol, globals.Buy)
+		r := db.Client.Last(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", order.Strategy, order.Symbol, globals.Buy)
 		if r.Error != nil {
 			return r.Error
 		}
@@ -72,13 +72,13 @@ func updateAnalysis(order *orders.Order, foundAnalysis *Analysis) error {
 		foundAnalysis.SuccessRate = float64(foundAnalysis.SuccessfulSells) / float64(foundAnalysis.Sells)
 	}
 
-	db.Client.Table("analyses").Save(foundAnalysis)
+	db.Client.Save(foundAnalysis)
 
 	return nil
 }
 
 func createAnalysis(strategy, symbol string, price float64) error {
-	r := db.Client.Table("analyses").Create(&Analysis{
+	r := db.Client.Create(&Analysis{
 		Strategy:        strategy,
 		Symbol:          symbol,
 		Buys:            1, // Should be safe to assume this?

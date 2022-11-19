@@ -185,7 +185,7 @@ func (m *Autobinance) Logic() {
 		m.Settings.SelectedSymbols.Value = settings.Find(m.Settings.SelectedSymbols.Name)
 	case "4":
 		var foundAnalyses []analysis.Analysis
-		r := db.Client.Table("analyses").Find(&foundAnalyses)
+		r := db.Client.Find(&foundAnalyses)
 		if r.Error != nil {
 			m.err = r.Error
 			break
@@ -301,7 +301,7 @@ func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) 
 
 	// Might want to consider a different approach with a clearer logic for these DB calls
 	var foundOrder orders.Order
-	r := db.Client.Table("orders").Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
+	r := db.Client.Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
 	if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
 		return nil, r.Error
 	}
@@ -343,7 +343,7 @@ func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) 
 	}
 
 	if decision != globals.Hold {
-		r := db.Client.Table("orders").Create(order)
+		r := db.Client.Create(order)
 		if r.Error != nil {
 			return nil, r.Error
 		}

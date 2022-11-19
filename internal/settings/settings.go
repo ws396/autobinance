@@ -25,7 +25,7 @@ func AutoMigrateSettings() {
 	db.Client.AutoMigrate(&Setting{})
 
 	var foundSetting Setting
-	r := db.Client.Table("settings").First(&foundSetting)
+	r := db.Client.First(&foundSetting)
 	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
 		fields := []string{
 			"selected_symbols",
@@ -41,7 +41,7 @@ func AutoMigrateSettings() {
 
 func GetSettings() (*Settings, error) {
 	var foundSettings []Setting
-	r := db.Client.Table("settings").Find(&foundSettings)
+	r := db.Client.Find(&foundSettings)
 	if r.Error != nil {
 		return nil, r.Error
 	}
@@ -52,8 +52,8 @@ func GetSettings() (*Settings, error) {
 	}
 
 	return &Settings{
-		SelectedSymbols:     Setting{m["selected_symbols"].ID, m["selected_symbols"].Name, m["selected_symbols"].Value},
-		SelectedStrategies:  Setting{m["selected_strategies"].ID, m["selected_strategies"].Name, m["selected_strategies"].Value},
+		SelectedSymbols:    Setting{m["selected_symbols"].ID, m["selected_symbols"].Name, m["selected_symbols"].Value},
+		SelectedStrategies: Setting{m["selected_strategies"].ID, m["selected_strategies"].Name, m["selected_strategies"].Value},
 		//AvailableSymbols:    Setting{m["available_symbols"].ID, m["available_symbols"].Name, m["available_symbols"].Value},
 		AvailableStrategies: Setting{m["available_strategies"].ID, m["available_strategies"].Name, m["available_strategies"].Value},
 	}, nil
@@ -61,7 +61,7 @@ func GetSettings() (*Settings, error) {
 
 func Find(name string) string {
 	var foundSetting Setting
-	r := db.Client.Table("settings").First(&foundSetting, "name = ?", name)
+	r := db.Client.First(&foundSetting, "name = ?", name)
 	if r.Error != nil {
 		log.Panicln(r.Error)
 	}
@@ -71,20 +71,20 @@ func Find(name string) string {
 
 func Update(name, value string) {
 	var foundSetting Setting
-	r := db.Client.Table("settings").First(&foundSetting, "name = ?", name)
+	r := db.Client.First(&foundSetting, "name = ?", name)
 	if r.Error != nil {
 		log.Panicln(r.Error)
 	}
 
 	foundSetting.Value = value
-	r = db.Client.Table("settings").Save(&foundSetting)
+	r = db.Client.Save(&foundSetting)
 	if r.Error != nil {
 		log.Panicln(r.Error)
 	}
 }
 
 func Create(name, value string) {
-	r := db.Client.Table("settings").Create(&Setting{
+	r := db.Client.Create(&Setting{
 		Name:  name,
 		Value: value,
 	})
