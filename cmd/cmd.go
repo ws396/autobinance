@@ -18,6 +18,7 @@ import (
 	"github.com/ws396/autobinance/internal/analysis"
 	"github.com/ws396/autobinance/internal/binancew"
 	"github.com/ws396/autobinance/internal/db"
+	"github.com/ws396/autobinance/internal/download"
 	"github.com/ws396/autobinance/internal/globals"
 	"github.com/ws396/autobinance/internal/orders"
 	"github.com/ws396/autobinance/internal/output"
@@ -164,6 +165,45 @@ func (m *Autobinance) Logic() {
 
 		settings.Update(m.Settings.SelectedSymbols.Name, m.textInput.Value())
 		m.Settings.SelectedSymbols.Value = m.textInput.Value()
+	case "8":
+		if m.Settings.SelectedSymbols.Value == "" {
+			m.err = errors.New("err: no selected symbols found")
+			return
+		}
+
+		selectedSymbols := strings.Split(m.Settings.SelectedSymbols.Value, ",")
+
+		timePeriod := strings.Split(m.textInput.Value(), " ")
+		if len(timePeriod) != 2 {
+			m.err = errors.New("err: wrong amount of arguments")
+			return
+		}
+		from, err := time.Parse("02-01-2006", timePeriod[0])
+		if err != nil {
+			m.err = err
+			return
+		}
+		to, err := time.Parse("02-01-2006", timePeriod[1])
+		if err != nil {
+			m.err = err
+			return
+		}
+
+		if to.Before(from) {
+			m.err = errors.New("err: expected second date to be later than first")
+			return
+		}
+
+		// Visualize progress bar for this?
+		for _, s := range selectedSymbols {
+			err := download.KlinesCSVFromZips(s, globals.Timeframe, from, to)
+			if err != nil {
+				m.err = err
+				return
+			}
+		}
+
+		m.info = "Testdata downloaded"
 	}
 
 	// Choice transition (Might also want to check here if previous step actually needs a transition)
@@ -206,6 +246,7 @@ func (m *Autobinance) Logic() {
 			os.Remove(path)
 		}
 	case "7":
+		// Confirmation would be nice...
 		db.Client.Migrator().DropTable(&analysis.Analysis{})
 		db.Client.Migrator().DropTable(&settings.Setting{})
 		db.Client.Migrator().DropTable(&orders.Order{})
@@ -214,6 +255,7 @@ func (m *Autobinance) Logic() {
 		settings.AutoMigrateSettings()
 		orders.AutoMigrateOrders()
 	case "8":
+	case "10":
 		m.StopTradingSession()
 	}
 }
@@ -410,7 +452,8 @@ func chosenView(m Autobinance) string {
 			"5) Check account", "\n",
 			"6) Clear logs and trade history", "\n",
 			"7) Recreate tables", "\n",
-			"8) Quit trading session",
+			"8) Download testdata", "\n",
+			"10) Quit trading session",
 		)
 	// Most of these don't really need to be a separate view btw. Use model.info more.
 	case "1":
@@ -433,6 +476,11 @@ func chosenView(m Autobinance) string {
 	case "7":
 		msg = fmt.Sprint("All tables have been recreated")
 	case "8":
+		msg = fmt.Sprint(
+			"Testdata will be downloaded for all currently selected symbols", "\n",
+			"Enter the desired period of time (ex. 01-02-2021 30-03-2021):",
+		)
+	case "10":
 		msg = fmt.Sprint("Trading session stopped.")
 	default:
 		msg = fmt.Sprint("Invalid choice")

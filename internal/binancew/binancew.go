@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/adshao/go-binance/v2"
 )
@@ -18,6 +19,7 @@ type ExchangeClient interface {
 	CreateOrder(input, quantity, price string, orderType binance.SideType) (*binance.CreateOrderResponse, error)
 	GetOrders(symbol string) ([]*binance.Order, error)
 	GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error)
+	GetKlinesByPeriod(symbol string, timeframe uint, start, end time.Time) ([]*binance.Kline, error)
 	GetAccount() (*binance.Account, error)
 	GetCurrencies(symbol ...string) ([]binance.Balance, error)
 	GetAllSymbols() []string
@@ -67,6 +69,18 @@ func (client *ClientExt) GetKlines(symbol string, timeframe uint) ([]*binance.Kl
 	if err != nil {
 		return nil, err
 	}
+
+	return klines, nil
+}
+
+func (client *ClientExt) GetKlinesByPeriod(symbol string, timeframe uint, start, end time.Time) ([]*binance.Kline, error) {
+	klines, err := client.NewKlinesService().Symbol(symbol).
+		Interval(fmt.Sprint(timeframe) + "m").StartTime(start.Unix() * 1000).
+		EndTime(end.Unix() * 1000).Do(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	log.Println(klines, err)
 
 	return klines, nil
 }
