@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/ws396/autobinance/internal/globals"
 )
 
 func ToSnakeCase(str string) string {
@@ -53,4 +55,25 @@ func Contains[T comparable](slice []T, el T) bool {
 	}
 
 	return false
+}
+
+func ExtractTimepoints(s string) (time.Time, time.Time, error) {
+	timePeriod := strings.Split(s, " ")
+	if len(timePeriod) != 2 {
+		return time.Time{}, time.Time{}, globals.ErrWrongArgumentAmount
+	}
+	start, err := time.Parse("02-01-2006", timePeriod[0])
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	end, err := time.Parse("02-01-2006", timePeriod[1])
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+
+	if end.Before(start) {
+		return time.Time{}, time.Time{}, globals.ErrWrongDateOrder
+	}
+
+	return start, end, nil
 }

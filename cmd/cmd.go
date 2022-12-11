@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,7 +74,6 @@ func InitialModel() Autobinance {
 		client = binancew.NewExtClient(apiKey, secretKey)
 	}
 
-	// Pre-load all settings here?
 	s, err := settings.GetSettings()
 	if err != nil {
 		log.Println(err)
@@ -82,7 +83,8 @@ func InitialModel() Autobinance {
 	for k := range strategies.StrategiesInfo {
 		keys = append(keys, k)
 	}
-	s.AvailableStrategies.Value = strings.Join(keys, ",")
+
+	s.AvailableStrategies = settings.Update(s.AvailableStrategies.Name, strings.Join(keys, ","))
 
 	return Autobinance{
 		choice:      "root",
@@ -140,63 +142,43 @@ func (m *Autobinance) Logic() {
 	// Last choice after-render logic
 	switch m.choice {
 	case "2":
-		availableStrategies := strings.Split(m.Settings.AvailableStrategies.Value, ",")
 		selectedStrategies := strings.Split(m.textInput.Value(), ",")
 
 		for _, v := range selectedStrategies {
-			if !util.Contains(availableStrategies, v) {
-				m.err = errors.New("err: entered wrong strategy names")
+			if !util.Contains(m.Settings.AvailableStrategies.ValueArr, v) {
+				m.err = globals.ErrWrongStrategyName
 				return
 			}
 		}
 
-		settings.Update(m.Settings.SelectedStrategies.Name, m.textInput.Value())
-		m.Settings.SelectedStrategies.Value = m.textInput.Value()
+		m.Settings.SelectedStrategies = settings.Update(m.Settings.SelectedStrategies.Name, m.textInput.Value())
 	case "3":
 		symbols := m.Client.GetAllSymbols()
 		selectedSymbols := strings.Split(m.textInput.Value(), ",")
 
 		for _, v := range selectedSymbols {
 			if !util.Contains(symbols, v) {
-				m.err = errors.New("err: entered wrong symbol pairs")
+				m.err = globals.ErrWrongSymbol
 				return
 			}
 		}
 
-		settings.Update(m.Settings.SelectedSymbols.Name, m.textInput.Value())
-		m.Settings.SelectedSymbols.Value = m.textInput.Value()
+		m.Settings.SelectedSymbols = settings.Update(m.Settings.SelectedSymbols.Name, m.textInput.Value())
 	case "8":
-		if m.Settings.SelectedSymbols.Value == "" {
-			m.err = errors.New("err: no selected symbols found")
+		if len(m.Settings.SelectedSymbols.Value) == 0 {
+			m.err = globals.ErrSymbolsNotFound
 			return
 		}
 
-		selectedSymbols := strings.Split(m.Settings.SelectedSymbols.Value, ",")
-
-		timePeriod := strings.Split(m.textInput.Value(), " ")
-		if len(timePeriod) != 2 {
-			m.err = errors.New("err: wrong amount of arguments")
-			return
-		}
-		from, err := time.Parse("02-01-2006", timePeriod[0])
+		start, end, err := util.ExtractTimepoints(m.textInput.Value())
 		if err != nil {
 			m.err = err
-			return
-		}
-		to, err := time.Parse("02-01-2006", timePeriod[1])
-		if err != nil {
-			m.err = err
-			return
-		}
-
-		if to.Before(from) {
-			m.err = errors.New("err: expected second date to be later than first")
 			return
 		}
 
 		// Visualize progress bar for this?
-		for _, s := range selectedSymbols {
-			err := download.KlinesCSVFromZips(s, globals.Timeframe, from, to)
+		for _, s := range m.Settings.SelectedSymbols.ValueArr {
+			err := download.KlinesCSVFromZips(s, globals.Timeframe, start, end)
 			if err != nil {
 				m.err = err
 				return
@@ -204,6 +186,8 @@ func (m *Autobinance) Logic() {
 		}
 
 		m.info = "Testdata downloaded"
+	case "9":
+		m.Backtest()
 	}
 
 	// Choice transition (Might also want to check here if previous step actually needs a transition)
@@ -217,12 +201,12 @@ func (m *Autobinance) Logic() {
 	// New choice pre-render logic
 	switch m.choice {
 	case "1":
-		excelWriter := output.NewWriterCreator().CreateWriter(output.Excel)
-		m.StartTradingSession(excelWriter)
+		w := output.NewWriterCreator().CreateWriter(output.Excel)
+		m.StartTradingSession(w)
 	case "2":
-		m.Settings.SelectedStrategies.Value = settings.Find(m.Settings.SelectedStrategies.Name)
+		m.Settings.SelectedStrategies = settings.Find(m.Settings.SelectedStrategies.Name)
 	case "3":
-		m.Settings.SelectedSymbols.Value = settings.Find(m.Settings.SelectedSymbols.Name)
+		m.Settings.SelectedSymbols = settings.Find(m.Settings.SelectedSymbols.Name)
 	case "4":
 		var foundAnalyses []analysis.Analysis
 		r := db.Client.Find(&foundAnalyses)
@@ -255,30 +239,28 @@ func (m *Autobinance) Logic() {
 		settings.AutoMigrateSettings()
 		orders.AutoMigrateOrders()
 	case "8":
+	case "9":
 	case "10":
 		m.StopTradingSession()
 	}
 }
 
-func (m *Autobinance) StartTradingSession(writer output.Writer) {
+func (m *Autobinance) StartTradingSession(w output.Writer) {
 	if m.tradingRunning {
-		m.err = errors.New("err: the trading is already running")
+		m.err = globals.ErrTradingAlreadyRunning
 		m.choice = "root"
 		return
 	}
-	if m.Settings.SelectedStrategies.Value == "" {
-		m.err = errors.New("err: could not receive trading strategies")
+	if len(m.Settings.SelectedStrategies.ValueArr) == 0 {
+		m.err = globals.ErrStrategiesNotFound
 		m.choice = "root"
 		return
 	}
-	if m.Settings.SelectedSymbols.Value == "" {
-		m.err = errors.New("err: could not receive trading symbols")
+	if len(m.Settings.SelectedSymbols.ValueArr) == 0 {
+		m.err = globals.ErrSymbolsNotFound
 		m.choice = "root"
 		return
 	}
-
-	selectedStrategies := strings.Split(m.Settings.SelectedStrategies.Value, ",")
-	selectedSymbols := strings.Split(m.Settings.SelectedSymbols.Value, ",")
 
 	m.tradingRunning = true
 
@@ -288,8 +270,9 @@ func (m *Autobinance) StartTradingSession(writer output.Writer) {
 			case <-m.stopTrading:
 				return
 			case <-m.TickerChan:
-				dataChannel := make(chan *orders.Order, len(selectedStrategies)*len(selectedSymbols))
-				for _, symbol := range selectedSymbols {
+				chanSize := len(m.Settings.SelectedStrategies.ValueArr) * len(m.Settings.SelectedSymbols.ValueArr)
+				dataChannel := make(chan *orders.Order, chanSize)
+				for _, symbol := range m.Settings.SelectedSymbols.ValueArr {
 					go func(symbol string) {
 						klines, err := m.Client.GetKlines(symbol, globals.Timeframe)
 						if err != nil {
@@ -298,7 +281,7 @@ func (m *Autobinance) StartTradingSession(writer output.Writer) {
 						}
 
 						series := techanext.GetSeries(klines)
-						for _, strategy := range selectedStrategies {
+						for _, strategy := range m.Settings.SelectedStrategies.ValueArr {
 							go func(strategy string) {
 								order, err := m.Trade(strategy, symbol, series)
 								if err != nil {
@@ -315,14 +298,12 @@ func (m *Autobinance) StartTradingSession(writer output.Writer) {
 				for i := 0; i < cap(dataChannel); i++ {
 					data := <-dataChannel
 
-					util.WriteToLogMisc(data)
-
 					if data != nil && data.Decision != globals.Hold {
 						orders = append(orders, data)
 					}
 				}
 
-				writer.WriteToLog(orders)
+				w.WriteToLog(orders)
 			}
 		}
 	}()
@@ -400,6 +381,93 @@ func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) 
 	return order, nil
 }
 
+func (m *Autobinance) Backtest() {
+	if !globals.SimulationMode {
+		m.info = "Only available in simulation mode"
+		return
+	}
+	if len(m.Settings.SelectedSymbols.ValueArr) == 0 {
+		m.err = globals.ErrSymbolsNotFound
+	}
+
+	klinesFeed := map[string][]*binance.Kline{}
+
+	start, end, err := util.ExtractTimepoints(m.textInput.Value())
+	if err != nil {
+		m.err = err
+		return
+	}
+
+	for _, s := range m.Settings.SelectedSymbols.ValueArr {
+		path := fmt.Sprintf(
+			"internal/testdata/%s_%dm_%s_%s.csv",
+			s,
+			globals.Timeframe,
+			start.Format("02-01-2006"),
+			end.Format("02-01-2006"),
+		)
+		f, err := os.Open(path)
+		if err != nil {
+			m.err = err
+			return
+		}
+		defer f.Close()
+
+		reader := csv.NewReader(f)
+		records, err := reader.ReadAll()
+		if err != nil {
+			m.err = err
+			return
+		}
+
+		klines := []*binance.Kline{}
+		for _, record := range records {
+			openTime, _ := strconv.ParseInt(record[0], 10, 64)
+			closeTime, _ := strconv.ParseInt(record[6], 10, 64)
+			tradeNum, _ := strconv.ParseInt(record[8], 10, 64)
+
+			kline := &binance.Kline{
+				OpenTime:                 openTime,
+				Open:                     record[1],
+				High:                     record[2],
+				Low:                      record[3],
+				Close:                    record[4],
+				Volume:                   record[5],
+				CloseTime:                closeTime,
+				QuoteAssetVolume:         record[7],
+				TradeNum:                 tradeNum,
+				TakerBuyBaseAssetVolume:  record[9],
+				TakerBuyQuoteAssetVolume: record[10],
+			}
+
+			klines = append(klines, kline)
+		}
+
+		klinesFeed[s] = klines
+	}
+
+	batchLimit := 60
+	client := binancew.NewClientBacktest(start, end, klinesFeed, batchLimit)
+	tickerChan := make(chan time.Time)
+	btModel := Autobinance{
+		Client:     client,
+		Settings:   m.Settings,
+		TickerChan: tickerChan,
+	}
+
+	w := output.NewWriterCreator().CreateWriter(output.Stub)
+	btModel.StartTradingSession(w)
+
+	klinesLen := len(klinesFeed[m.Settings.SelectedSymbols.ValueArr[0]])
+	for i := 0; i < klinesLen-batchLimit; i++ {
+		tickerChan <- time.Now()
+		binancew.BacktestIndex++
+	}
+
+	binancew.BacktestIndex = 0
+	m.info = "Backtesting successful. Check analyses to see results."
+}
+
 func (m *Autobinance) QuitApp() (tea.Model, tea.Cmd) {
 	m.quitting = true
 
@@ -453,6 +521,7 @@ func chosenView(m Autobinance) string {
 			"6) Clear logs and trade history", "\n",
 			"7) Recreate tables", "\n",
 			"8) Download testdata", "\n",
+			"9) Run backtest", "\n",
 			"10) Quit trading session",
 		)
 	// Most of these don't really need to be a separate view btw. Use model.info more.
@@ -462,7 +531,7 @@ func chosenView(m Autobinance) string {
 		msg = fmt.Sprint(
 			"Available strategies: ", m.Settings.AvailableStrategies.Value, "\n",
 			"Currently selected strategies: ", m.Settings.SelectedStrategies.Value, "\n",
-			"Enter new strategy set (ex. example,one):",
+			"Enter new strategy set (ex. example):",
 		)
 	case "3":
 		msg = fmt.Sprint(
@@ -477,8 +546,16 @@ func chosenView(m Autobinance) string {
 		msg = fmt.Sprint("All tables have been recreated")
 	case "8":
 		msg = fmt.Sprint(
-			"Testdata will be downloaded for all currently selected symbols", "\n",
+			"Testdata will be downloaded for next symbols:", "\n",
+			m.Settings.SelectedSymbols.Value, "\n",
 			"Enter the desired period of time (ex. 01-02-2021 30-03-2021):",
+		)
+	case "9":
+		msg = fmt.Sprint(
+			"Backtesting will be done for next strategies-symbols:", "\n",
+			m.Settings.SelectedStrategies.Value, "\n",
+			m.Settings.SelectedSymbols.Value, "\n",
+			"Enter the period for backtesting (ex. 01-02-2021 30-03-2021):",
 		)
 	case "10":
 		msg = fmt.Sprint("Trading session stopped.")

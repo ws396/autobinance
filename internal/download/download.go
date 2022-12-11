@@ -3,13 +3,14 @@ package download
 import (
 	"archive/zip"
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/ws396/autobinance/internal/globals"
 )
 
 // Limited to 500 candles per request. This approach requires batch processing.
@@ -71,7 +72,7 @@ func KlinesCSVFromZips(symbol string, timeframe uint, start, end time.Time) erro
 	urls := []string{}
 	path := "internal/testdata/"
 	timepoint := start
-	errs := make(chan error, 1)
+	errs := make(chan error)
 
 	for !timepoint.After(end) {
 		if timepoint.Day() != 1 || timepoint.Month() == end.Month() {
@@ -123,7 +124,14 @@ func KlinesCSVFromZips(symbol string, timeframe uint, start, end time.Time) erro
 
 	err := extractKlinesToCSV(
 		filepaths,
-		path+fmt.Sprintf("%s_%s_%s.csv", symbol, start.Format("02-01-2006"), end.Format("02-01-2006")),
+		fmt.Sprintf(
+			"%s%s_%dm_%s_%s.csv",
+			path,
+			symbol,
+			timeframe,
+			start.Format("02-01-2006"),
+			end.Format("02-01-2006"),
+		),
 	)
 	if err != nil {
 		return err
@@ -205,7 +213,7 @@ func downloadFile(dest string, url string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.New("err: could not download file")
+		return globals.ErrCouldNotDownloadFile
 	}
 
 	// Writer the body to file

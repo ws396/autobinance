@@ -11,14 +11,12 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// Based on:
-// https://github.com/AlexanderGrom/go-patterns/blob/master/Creational/FactoryMethod/factory_method.go
-
 type action string
 
 const (
 	Txt      action = "txt"
 	Excel    action = "excel"
+	Stub     action = "stub"
 	Filename string = "trade_history"
 )
 
@@ -38,24 +36,30 @@ func NewWriterCreator() Creator {
 }
 
 func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
-	var product Writer
+	var w Writer
 
 	switch action {
 	case Txt:
-		product = &TxtWriter{}
+		w = &TxtWriter{}
 	case Excel:
-		product = &ExcelWriter{}
+		w = &ExcelWriter{}
+	case Stub:
+		w = &StubWriter{}
 	default:
 		log.Fatalln("Unknown Action")
 	}
 
-	return product
+	return w
 }
 
 type TxtWriter struct {
 }
 
 func (p *TxtWriter) WriteToLog(orders []*orders.Order) {
+	if len(orders) == 0 {
+		return
+	}
+
 	f, err := os.OpenFile(Filename+".txt", os.O_WRONLY|os.O_APPEND, 0644)
 	if errors.Is(err, os.ErrNotExist) {
 		f, err = os.Create(Filename + ".txt")
@@ -88,6 +92,9 @@ type ExcelWriter struct {
 }
 
 func (p *ExcelWriter) WriteToLog(orders []*orders.Order) {
+	if len(orders) == 0 {
+		return
+	}
 	f, err := excelize.OpenFile(Filename + ".xlsx")
 	if errors.Is(err, os.ErrNotExist) {
 		f = excelize.NewFile()
@@ -128,6 +135,12 @@ func (p *ExcelWriter) WriteToLog(orders []*orders.Order) {
 	}
 
 	f.Save()
+}
+
+type StubWriter struct {
+}
+
+func (p *StubWriter) WriteToLog(orders []*orders.Order) {
 }
 
 func orderToMap(data *orders.Order) map[string]string {

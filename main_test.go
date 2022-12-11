@@ -31,7 +31,7 @@ func TestTrade(t *testing.T) {
 		setupMockDB(t, mockExpect)
 
 		client := binancew.NewExtClientSim("", "")
-		tickerChan := make(chan time.Time, 1)
+		tickerChan := make(chan time.Time)
 		model := cmd.Autobinance{
 			Client: client,
 			Settings: &settings.Settings{
@@ -41,7 +41,7 @@ func TestTrade(t *testing.T) {
 			TickerChan: tickerChan,
 		}
 		w := &mockWriter{
-			dataChan: make(chan []*orders.Order, 1),
+			dataChan: make(chan []*orders.Order),
 		}
 
 		model.StartTradingSession(w)

@@ -50,8 +50,6 @@ func StrategyExample(series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
 	EMA50 := techan.NewEMAIndicator(closePrices, 50)
 
-	//record := techan.NewTradingRecord() // Currently not checking if position is new or not
-
 	buyRule := buyRuleExample{EMA50, series}
 	sellRule := sellRuleExample{EMA50, series}
 

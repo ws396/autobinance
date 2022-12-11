@@ -3,15 +3,17 @@ package settings
 import (
 	"errors"
 	"log"
+	"strings"
 
 	"github.com/ws396/autobinance/internal/db"
 	"gorm.io/gorm"
 )
 
 type Setting struct {
-	ID    uint   `json:"id" gorm:"primary_key;auto_increment"`
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	ID       uint     `json:"id" gorm:"primary_key;auto_increment"`
+	Name     string   `json:"name"`
+	Value    string   `json:"value"`
+	ValueArr []string `json:"valueArr" gorm:"-"`
 }
 
 type Settings struct {
@@ -52,24 +54,46 @@ func GetSettings() (*Settings, error) {
 	}
 
 	return &Settings{
-		SelectedSymbols:    Setting{m["selected_symbols"].ID, m["selected_symbols"].Name, m["selected_symbols"].Value},
-		SelectedStrategies: Setting{m["selected_strategies"].ID, m["selected_strategies"].Name, m["selected_strategies"].Value},
-		//AvailableSymbols:    Setting{m["available_symbols"].ID, m["available_symbols"].Name, m["available_symbols"].Value},
-		AvailableStrategies: Setting{m["available_strategies"].ID, m["available_strategies"].Name, m["available_strategies"].Value},
+		SelectedSymbols: Setting{
+			m["selected_symbols"].ID,
+			m["selected_symbols"].Name,
+			m["selected_symbols"].Value,
+			strings.Split(m["selected_symbols"].Value, ","),
+		},
+		SelectedStrategies: Setting{
+			m["selected_strategies"].ID,
+			m["selected_strategies"].Name,
+			m["selected_strategies"].Value,
+			strings.Split(m["selected_strategies"].Value, ","),
+		},
+		/*
+			AvailableSymbols:    Setting{
+				m["available_symbols"].ID,
+				m["available_symbols"].Name,
+				m["available_symbols"].Value,
+				strings.Split(m["available_symbols"].Value, ","),
+			},
+		*/
+		AvailableStrategies: Setting{
+			m["available_strategies"].ID,
+			m["available_strategies"].Name,
+			m["available_strategies"].Value,
+			strings.Split(m["available_strategies"].Value, ","),
+		},
 	}, nil
 }
 
-func Find(name string) string {
+func Find(name string) Setting {
 	var foundSetting Setting
 	r := db.Client.First(&foundSetting, "name = ?", name)
 	if r.Error != nil {
 		log.Panicln(r.Error)
 	}
 
-	return foundSetting.Value
+	return foundSetting
 }
 
-func Update(name, value string) {
+func Update(name, value string) Setting {
 	var foundSetting Setting
 	r := db.Client.First(&foundSetting, "name = ?", name)
 	if r.Error != nil {
@@ -77,10 +101,13 @@ func Update(name, value string) {
 	}
 
 	foundSetting.Value = value
+	foundSetting.ValueArr = strings.Split(value, ",")
 	r = db.Client.Save(&foundSetting)
 	if r.Error != nil {
 		log.Panicln(r.Error)
 	}
+
+	return foundSetting
 }
 
 func Create(name, value string) {
