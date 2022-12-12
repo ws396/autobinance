@@ -19,15 +19,14 @@ import (
 	"github.com/sdcoffey/techan"
 	"github.com/ws396/autobinance/internal/analysis"
 	"github.com/ws396/autobinance/internal/binancew"
-	"github.com/ws396/autobinance/internal/db"
 	"github.com/ws396/autobinance/internal/download"
 	"github.com/ws396/autobinance/internal/globals"
-	"github.com/ws396/autobinance/internal/orders"
 	"github.com/ws396/autobinance/internal/output"
-	"github.com/ws396/autobinance/internal/settings"
+	"github.com/ws396/autobinance/internal/store"
 	"github.com/ws396/autobinance/internal/strategies"
 	"github.com/ws396/autobinance/internal/techanext"
 	"github.com/ws396/autobinance/internal/util"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -39,7 +38,6 @@ var (
 
 type errMsg error
 
-// All view-related data goes through Autobinance
 type Autobinance struct {
 	quitting       bool
 	choice         string
@@ -50,8 +48,9 @@ type Autobinance struct {
 	help           string
 	tradingRunning bool
 	stopTrading    chan bool
-	Client         binancew.ExchangeClient
-	Settings       *settings.Settings
+	StoreClient    *store.GORMClient
+	ExchangeClient binancew.ExchangeClient
+	Settings       *store.Settings
 	TickerChan     <-chan time.Time
 }
 
@@ -67,14 +66,27 @@ func InitialModel() Autobinance {
 	apiKey := os.Getenv("API_KEY")
 	secretKey := os.Getenv("SECRET_KEY")
 
-	var client binancew.ExchangeClient
+	var exchangeClient binancew.ExchangeClient
 	if globals.SimulationMode {
-		client = binancew.NewExtClientSim(apiKey, secretKey)
+		exchangeClient = binancew.NewExtClientSim(apiKey, secretKey)
 	} else {
-		client = binancew.NewExtClient(apiKey, secretKey)
+		exchangeClient = binancew.NewExtClient(apiKey, secretKey)
 	}
 
-	s, err := settings.GetSettings()
+	dialect := postgres.New(postgres.Config{
+		DSN: fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
+			os.Getenv("PGSQL_HOST"),
+			os.Getenv("PGSQL_PORT"),
+			os.Getenv("PGSQL_DB"),
+			os.Getenv("PGSQL_USER"),
+			os.Getenv("PGSQL_PASS"),
+		),
+		PreferSimpleProtocol: true, // disables implicit prepared statement usage. By default pgx automatically uses the extended protocol
+	})
+	storeClient := store.NewGORMClient(dialect)
+	storeClient.AutoMigrateAll()
+
+	s, err := storeClient.GetAllSettings()
 	if err != nil {
 		log.Println(err)
 	}
@@ -84,17 +96,18 @@ func InitialModel() Autobinance {
 		keys = append(keys, k)
 	}
 
-	s.AvailableStrategies = settings.Update(s.AvailableStrategies.Name, strings.Join(keys, ","))
+	s.AvailableStrategies = storeClient.UpdateSetting(s.AvailableStrategies.Name, strings.Join(keys, ","))
 
 	return Autobinance{
-		choice:      "root",
-		textInput:   ti,
-		err:         err,
-		help:        "\\q - back to root",
-		stopTrading: make(chan bool),
-		Client:      client,
-		Settings:    s,
-		TickerChan:  ticker.C,
+		choice:         "root",
+		textInput:      ti,
+		err:            err,
+		help:           "\\q - back to root",
+		stopTrading:    make(chan bool),
+		StoreClient:    storeClient,
+		ExchangeClient: exchangeClient,
+		Settings:       s,
+		TickerChan:     ticker.C,
 	}
 }
 
@@ -151,19 +164,19 @@ func (m *Autobinance) Logic() {
 			}
 		}
 
-		m.Settings.SelectedStrategies = settings.Update(m.Settings.SelectedStrategies.Name, m.textInput.Value())
+		m.Settings.SelectedStrategies = m.StoreClient.UpdateSetting(m.Settings.SelectedStrategies.Name, m.textInput.Value())
 	case "3":
-		symbols := m.Client.GetAllSymbols()
+		allSymbols := m.ExchangeClient.GetAllSymbols()
 		selectedSymbols := strings.Split(m.textInput.Value(), ",")
 
 		for _, v := range selectedSymbols {
-			if !util.Contains(symbols, v) {
+			if !util.Contains(allSymbols, v) {
 				m.err = globals.ErrWrongSymbol
 				return
 			}
 		}
 
-		m.Settings.SelectedSymbols = settings.Update(m.Settings.SelectedSymbols.Name, m.textInput.Value())
+		m.Settings.SelectedSymbols = m.StoreClient.UpdateSetting(m.Settings.SelectedSymbols.Name, m.textInput.Value())
 	case "8":
 		if len(m.Settings.SelectedSymbols.Value) == 0 {
 			m.err = globals.ErrSymbolsNotFound
@@ -204,20 +217,21 @@ func (m *Autobinance) Logic() {
 		w := output.NewWriterCreator().CreateWriter(output.Excel)
 		m.StartTradingSession(w)
 	case "2":
-		m.Settings.SelectedStrategies = settings.Find(m.Settings.SelectedStrategies.Name)
+		m.Settings.SelectedStrategies = m.StoreClient.GetSetting(m.Settings.SelectedStrategies.Name)
 	case "3":
-		m.Settings.SelectedSymbols = settings.Find(m.Settings.SelectedSymbols.Name)
+		m.Settings.SelectedSymbols = m.StoreClient.GetSetting(m.Settings.SelectedSymbols.Name)
 	case "4":
-		var foundAnalyses []analysis.Analysis
-		r := db.Client.Find(&foundAnalyses)
-		if r.Error != nil {
-			m.err = r.Error
-			break
+		foundOrders, err := m.StoreClient.GetAllOrders()
+		if err != nil {
+			m.err = err
+			return
 		}
 
-		util.WriteToLogMisc(foundAnalyses)
+		analyses := analysis.CreateAnalysis(foundOrders)
+
+		util.WriteToLogMisc(analyses)
 	case "5":
-		util.WriteToLogMisc(m.Client.GetCurrencies())
+		util.WriteToLogMisc(m.ExchangeClient.GetCurrencies())
 	case "6":
 		filesToRemove := []string{
 			output.Filename + ".txt",
@@ -231,13 +245,10 @@ func (m *Autobinance) Logic() {
 		}
 	case "7":
 		// Confirmation would be nice...
-		db.Client.Migrator().DropTable(&analysis.Analysis{})
-		db.Client.Migrator().DropTable(&settings.Setting{})
-		db.Client.Migrator().DropTable(&orders.Order{})
+		m.StoreClient.Migrator().DropTable(&store.Setting{})
+		m.StoreClient.Migrator().DropTable(&store.Order{})
 
-		analysis.AutoMigrateAnalyses()
-		settings.AutoMigrateSettings()
-		orders.AutoMigrateOrders()
+		m.StoreClient.AutoMigrateAll()
 	case "8":
 	case "9":
 	case "10":
@@ -271,10 +282,10 @@ func (m *Autobinance) StartTradingSession(w output.Writer) {
 				return
 			case <-m.TickerChan:
 				chanSize := len(m.Settings.SelectedStrategies.ValueArr) * len(m.Settings.SelectedSymbols.ValueArr)
-				dataChannel := make(chan *orders.Order, chanSize)
+				dataChannel := make(chan *store.Order, chanSize)
 				for _, symbol := range m.Settings.SelectedSymbols.ValueArr {
 					go func(symbol string) {
-						klines, err := m.Client.GetKlines(symbol, globals.Timeframe)
+						klines, err := m.ExchangeClient.GetKlines(symbol, globals.Timeframe)
 						if err != nil {
 							m.err = err
 							return
@@ -294,7 +305,7 @@ func (m *Autobinance) StartTradingSession(w output.Writer) {
 					}(symbol)
 				}
 
-				var orders []*orders.Order
+				var orders []*store.Order
 				for i := 0; i < cap(dataChannel); i++ {
 					data := <-dataChannel
 
@@ -319,27 +330,27 @@ func (m *Autobinance) StopTradingSession() {
 	}
 }
 
-func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) (*orders.Order, error) {
+func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) (*store.Order, error) {
 	decision, indicators := strategies.StrategiesInfo[strategy].Handler(series)
 
-	// Might want to consider a different approach with a clearer logic for these DB calls
-	var foundOrder orders.Order
-	r := db.Client.Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
-	if r.Error != nil && !errors.Is(r.Error, gorm.ErrRecordNotFound) {
-		return nil, r.Error
+	foundOrder, err := m.StoreClient.GetLastOrder(strategy, symbol)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
 	}
 
-	// I guess I assume that this table will not contain "Holds"
-	if (foundOrder.Decision == globals.Sell || foundOrder.Decision == "") && decision == globals.Sell {
-		//return nil, errors.New("err: no recent buy has been done on this symbol to initiate sell")
-		return nil, nil
-	} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
-		//return nil, errors.New("err: this position is already bought")
+	if foundOrder != nil {
+		if (foundOrder.Decision == globals.Sell || foundOrder.Decision == "") && decision == globals.Sell {
+			//return nil, errors.New("err: no recent buy has been done on this symbol to initiate sell")
+			return nil, nil
+		} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
+			//return nil, errors.New("err: this position is already bought")
+			return nil, nil
+		}
+	} else if decision == globals.Sell {
 		return nil, nil
 	}
 
 	var quantity float64
-	// Should depend on found order?
 	switch decision {
 	case globals.Buy, globals.Hold:
 		quantity = globals.BuyAmount / series.LastCandle().ClosePrice.Float()
@@ -349,33 +360,27 @@ func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) 
 
 	price := series.LastCandle().ClosePrice.String()
 	// Getting the actual order from this might be useful, but keep in mind that GORM might not like the []*Fill field
-	// Could also just selectively add fields from this to orders.Order below instead
-	_, err := m.Client.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
+	// Could also just selectively add fields from this to store.Order below instead
+	_, err = m.ExchangeClient.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
 	if err != nil {
 		return nil, err
 	}
 
-	order := &orders.Order{
+	order := &store.Order{
 		Strategy:   strategy,
 		Symbol:     symbol,
 		Decision:   decision,
 		Quantity:   quantity,
 		Price:      series.LastCandle().ClosePrice.Float() * quantity,
 		Indicators: indicators,
-		Time:       time.Now(),
+		Timeframe:  globals.Timeframe,
 	}
 
 	if decision != globals.Hold {
-		r := db.Client.Create(order)
-		if r.Error != nil {
-			return nil, r.Error
+		err := m.StoreClient.CreateOrder(order)
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	// Maybe need to group this up somehow?
-	err = analysis.UpdateOrCreateAnalysis(order)
-	if err != nil {
-		return nil, err
 	}
 
 	return order, nil
@@ -388,6 +393,7 @@ func (m *Autobinance) Backtest() {
 	}
 	if len(m.Settings.SelectedSymbols.ValueArr) == 0 {
 		m.err = globals.ErrSymbolsNotFound
+		return
 	}
 
 	klinesFeed := map[string][]*binance.Kline{}
@@ -447,12 +453,13 @@ func (m *Autobinance) Backtest() {
 	}
 
 	batchLimit := 60
-	client := binancew.NewClientBacktest(start, end, klinesFeed, batchLimit)
+	btClient := binancew.NewClientBacktest(start, end, klinesFeed, batchLimit)
 	tickerChan := make(chan time.Time)
 	btModel := Autobinance{
-		Client:     client,
-		Settings:   m.Settings,
-		TickerChan: tickerChan,
+		StoreClient:    m.StoreClient,
+		ExchangeClient: btClient,
+		Settings:       m.Settings,
+		TickerChan:     tickerChan,
 	}
 
 	w := output.NewWriterCreator().CreateWriter(output.Stub)

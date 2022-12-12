@@ -14,16 +14,16 @@ type BacktestClient struct {
 	End        time.Time
 	KlinesFeed map[string][]*binance.Kline
 	BatchLimit int
-	Index      int
 }
 
 func NewClientBacktest(start, end time.Time, klinesFeed map[string][]*binance.Kline, batchLimit int) ExchangeClient {
-	return &BacktestClient{NewExtClientSim("", ""), start, end, klinesFeed, batchLimit, 0}
+	return &BacktestClient{NewExtClientSim("", ""), start, end, klinesFeed, batchLimit}
 }
 
 func (bc *BacktestClient) GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error) {
+	bi := BacktestIndex 
 	klines := []*binance.Kline{}
-	for i := BacktestIndex; i < bc.BatchLimit+BacktestIndex; i++ {
+	for i := bi; i < bc.BatchLimit+bi; i++ {
 		klines = append(klines, bc.KlinesFeed[symbol][i])
 	}
 

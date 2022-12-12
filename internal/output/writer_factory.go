@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/ws396/autobinance/internal/orders"
+	"github.com/ws396/autobinance/internal/store"
 	"github.com/ws396/autobinance/internal/strategies"
 	"github.com/xuri/excelize/v2"
 )
@@ -25,7 +25,7 @@ type Creator interface {
 }
 
 type Writer interface {
-	WriteToLog([]*orders.Order)
+	WriteToLog([]*store.Order)
 }
 
 type ConcreteWriterCreator struct {
@@ -55,7 +55,7 @@ func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
 type TxtWriter struct {
 }
 
-func (p *TxtWriter) WriteToLog(orders []*orders.Order) {
+func (p *TxtWriter) WriteToLog(orders []*store.Order) {
 	if len(orders) == 0 {
 		return
 	}
@@ -91,7 +91,7 @@ func (p *TxtWriter) WriteToLog(orders []*orders.Order) {
 type ExcelWriter struct {
 }
 
-func (p *ExcelWriter) WriteToLog(orders []*orders.Order) {
+func (p *ExcelWriter) WriteToLog(orders []*store.Order) {
 	if len(orders) == 0 {
 		return
 	}
@@ -140,13 +140,13 @@ func (p *ExcelWriter) WriteToLog(orders []*orders.Order) {
 type StubWriter struct {
 }
 
-func (p *StubWriter) WriteToLog(orders []*orders.Order) {
+func (p *StubWriter) WriteToLog(orders []*store.Order) {
 }
 
-func orderToMap(data *orders.Order) map[string]string {
+func orderToMap(data *store.Order) map[string]string {
 	dataMap := data.Indicators
 	dataMap["Current price"] = fmt.Sprintf("%v", data.Price)
-	dataMap["Time"] = data.Time.Format("02-01-2006 15:04:05")
+	dataMap["Created at"] = data.CreatedAt.Format("02-01-2006 15:04:05")
 	dataMap["Symbol"] = data.Symbol
 	dataMap["Decision"] = data.Decision
 	dataMap["Strategy"] = data.Strategy

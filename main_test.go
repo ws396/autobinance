@@ -9,9 +9,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/ws396/autobinance/cmd"
 	"github.com/ws396/autobinance/internal/binancew"
-	"github.com/ws396/autobinance/internal/db"
-	"github.com/ws396/autobinance/internal/orders"
-	"github.com/ws396/autobinance/internal/settings"
+	"github.com/ws396/autobinance/internal/store"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -19,36 +17,38 @@ import (
 
 // Remove channels entirely?
 type mockWriter struct {
-	dataChan chan []*orders.Order
+	dataChan chan []*store.Order
 }
 
-func (p *mockWriter) WriteToLog(orders []*orders.Order) {
+func (p *mockWriter) WriteToLog(orders []*store.Order) {
 	p.dataChan <- orders
+	log.Println("uh")
 }
 
 func TestTrade(t *testing.T) {
 	t.Run("successfully starts trading session and attempts one trade", func(t *testing.T) {
-		setupMockDB(t, mockExpect)
+		storeClient := &store.GORMClient{setupMockStore(t, mockExpect)}
 
-		client := binancew.NewExtClientSim("", "")
+		exchangeClient := binancew.NewExtClientSim("", "")
 		tickerChan := make(chan time.Time)
 		model := cmd.Autobinance{
-			Client: client,
-			Settings: &settings.Settings{
-				SelectedSymbols:    settings.Setting{ID: 0, Name: "selected_symbols", Value: "LTCBTC"},
-				SelectedStrategies: settings.Setting{ID: 0, Name: "selected_strategies", Value: "example"},
+			StoreClient:    storeClient,
+			ExchangeClient: exchangeClient,
+			Settings: &store.Settings{
+				SelectedSymbols:    store.Setting{ID: 0, Name: "selected_symbols", Value: "LTCBTC", ValueArr: []string{"LTCBTC"}},
+				SelectedStrategies: store.Setting{ID: 0, Name: "selected_strategies", Value: "example", ValueArr: []string{"example"}},
 			},
 			TickerChan: tickerChan,
 		}
 		w := &mockWriter{
-			dataChan: make(chan []*orders.Order),
+			dataChan: make(chan []*store.Order),
 		}
 
 		model.StartTradingSession(w)
 
 		tickerChan <- time.Now()
 		data := <-w.dataChan
-
+		//log.Println(data)
 		got := data[0].Symbol
 		want := "LTCBTC"
 
@@ -67,28 +67,15 @@ func mockExpect(mock sqlmock.Sqlmock) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(
-		regexp.QuoteMeta(`INSERT INTO "orders" ("strategy","symbol","decision","quantity","price","indicators","time") 
-			VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING "id"`)).
-		WithArgs("example", "LTCBTC", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}))
-	mock.ExpectCommit()
-
-	mock.ExpectQuery(
-		regexp.QuoteMeta(`SELECT * FROM "analyses" WHERE strategy = $1 AND symbol = $2 ORDER BY "analyses"."id" LIMIT 1`)).
-		WithArgs("example", "LTCBTC").
-		WillReturnError(gorm.ErrRecordNotFound)
-
-	mock.ExpectBegin()
-	mock.ExpectQuery(
-		regexp.QuoteMeta(`INSERT INTO "analyses" ("strategy","symbol","buys","sells","successful_sells","profit_usd","success_rate","timeframe","created_at","updated_at") 
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING "id"`)).
-		WithArgs("example", "LTCBTC", 1, 0, 0, sqlmock.AnyArg(), float64(0), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		regexp.QuoteMeta(`INSERT INTO "orders" ("strategy","symbol","decision","quantity","price","indicators","timeframe","created_at") 
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`)).
+		WithArgs("example", "LTCBTC", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectCommit()
 }
 
 // Will likely end up being used in several other test files
-func setupMockDB(t *testing.T, expectHandler func(sqlmock.Sqlmock)) {
+func setupMockStore(t *testing.T, expectHandler func(sqlmock.Sqlmock)) *gorm.DB {
 	dbMock, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
@@ -110,5 +97,5 @@ func setupMockDB(t *testing.T, expectHandler func(sqlmock.Sqlmock)) {
 		log.Panicln(err)
 	}
 
-	db.Client = database
+	return database
 }

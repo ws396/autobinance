@@ -1,15 +1,13 @@
 package analysis
 
 import (
-	"errors"
 	"time"
 
-	"github.com/ws396/autobinance/internal/db"
 	"github.com/ws396/autobinance/internal/globals"
-	"github.com/ws396/autobinance/internal/orders"
-	"gorm.io/gorm"
+	"github.com/ws396/autobinance/internal/store"
 )
 
+/*
 type Analysis struct {
 	ID              uint      `json:"id" gorm:"primary_key;auto_increment"`
 	Strategy        string    `json:"strategy" validate:"required"`
@@ -25,72 +23,50 @@ type Analysis struct {
 }
 
 func AutoMigrateAnalyses() {
-	db.Client.AutoMigrate(&Analysis{})
+	store.Client.AutoMigrate(&Analysis{})
+}
+*/
+
+type Analysis struct {
+	Buys            uint      `json:"buys"`
+	Sells           uint      `json:"sells"`
+	SuccessfulSells uint      `json:"successfulSells"`
+	ProfitUSD       float64   `json:"profitUSD"`
+	SuccessRate     float64   `json:"successRate"`
+	Timeframe       uint      `json:"timeframe"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
-func UpdateOrCreateAnalysis(order *orders.Order) error {
-	var foundAnalysis Analysis
-	r := db.Client.First(&foundAnalysis, "strategy = ? AND symbol = ?", order.Strategy, order.Symbol)
-	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
-		if order.Decision == globals.Buy {
-			err := createAnalysis(order.Strategy, order.Symbol, order.Price)
-			if err != nil {
-				return err
+func CreateAnalysis(orders []store.Order) map[string]Analysis {
+	analyses := map[string]Analysis{}
+	lastBuyPrices := map[string]float64{}
+	for _, o := range orders {
+		k := o.Strategy + o.Symbol
+		a := analyses[k]
+
+		if o.Decision == globals.Buy {
+			a.Buys += 1
+			a.ProfitUSD -= o.Price
+			lastBuyPrices[k] = o.Price
+		} else if o.Decision == globals.Sell {
+			if lastBuyPrices[k] < o.Price {
+				a.SuccessfulSells += 1
 			}
-		} /*  else if order.Decision == globals.Sell {
-			return errors.New("err: the first order type of symbol should always be buy")
-		} */
-	} else if r.Error != nil {
-		return r.Error
-	} else {
-		err := updateAnalysis(order, &foundAnalysis)
-		if err != nil {
-			return err
-		}
-	}
 
-	return nil
-}
-
-func updateAnalysis(order *orders.Order, foundAnalysis *Analysis) error {
-	if order.Decision == globals.Buy {
-		foundAnalysis.Buys += 1
-		foundAnalysis.ProfitUSD -= order.Price
-	} else if order.Decision == globals.Sell {
-		var foundOrder orders.Order
-		r := db.Client.Last(&foundOrder, "strategy = ? AND symbol = ? AND decision = ?", order.Strategy, order.Symbol, globals.Buy)
-		if r.Error != nil {
-			return r.Error
+			a.ProfitUSD += o.Price
+			a.Sells += 1
+			a.SuccessRate = float64(analyses[k].SuccessfulSells) / float64(analyses[k].Sells)
 		}
 
-		if foundOrder.Price < order.Price {
-			foundAnalysis.SuccessfulSells += 1
-		}
-
-		foundAnalysis.ProfitUSD += order.Price
-		foundAnalysis.Sells += 1
-		foundAnalysis.SuccessRate = float64(foundAnalysis.SuccessfulSells) / float64(foundAnalysis.Sells)
+		analyses[k] = a
 	}
 
-	db.Client.Save(foundAnalysis)
-
-	return nil
-}
-
-func createAnalysis(strategy, symbol string, price float64) error {
-	r := db.Client.Create(&Analysis{
-		Strategy:        strategy,
-		Symbol:          symbol,
-		Buys:            1, // Should be safe to assume this?
-		Sells:           0,
-		SuccessfulSells: 0,
-		ProfitUSD:       -price, // And this
-		SuccessRate:     0,
-		Timeframe:       globals.Timeframe,
-	})
-	if r.Error != nil {
-		return r.Error
+	t := time.Now()
+	for k, a := range analyses {
+		a.CreatedAt = t
+		a.Timeframe = orders[0].Timeframe
+		analyses[k] = a
 	}
 
-	return nil
+	return analyses
 }
