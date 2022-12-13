@@ -34,9 +34,9 @@ func TestTrade(t *testing.T) {
 		model := cmd.Autobinance{
 			StoreClient:    storeClient,
 			ExchangeClient: exchangeClient,
-			Settings: &store.Settings{
-				SelectedSymbols:    store.Setting{ID: 0, Name: "selected_symbols", Value: "LTCBTC", ValueArr: []string{"LTCBTC"}},
-				SelectedStrategies: store.Setting{ID: 0, Name: "selected_strategies", Value: "example", ValueArr: []string{"example"}},
+			Settings: map[string]store.Setting{
+				"selected_symbols":    {Name: "selected_symbols", Value: "LTCBTC", ValueArr: []string{"LTCBTC"}},
+				"selected_strategies": {Name: "selected_strategies", Value: "example", ValueArr: []string{"example"}},
 			},
 			TickerChan: tickerChan,
 		}

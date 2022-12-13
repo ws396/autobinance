@@ -16,12 +16,12 @@ type stochasticRSIIndicator struct {
 // NewStochasticRSIIndicator returns a derivative Indicator which returns the stochastic RSI indicator for the given
 // RSI window.
 // https://www.investopedia.com/terms/s/stochrsi.asp
-func NewStochasticRSIIndicator(indicator techan.Indicator, timeframe int) techan.Indicator {
-	rsiIndicator := techan.NewRelativeStrengthIndexIndicator(indicator, timeframe)
+func NewStochasticRSIIndicator(indicator techan.Indicator, window int) techan.Indicator {
+	rsiIndicator := techan.NewRelativeStrengthIndexIndicator(indicator, window)
 	return stochasticRSIIndicator{
 		curRSI: rsiIndicator,
-		minRSI: techan.NewMinimumValueIndicator(rsiIndicator, timeframe),
-		maxRSI: techan.NewMaximumValueIndicator(rsiIndicator, timeframe),
+		minRSI: techan.NewMinimumValueIndicator(rsiIndicator, window),
+		maxRSI: techan.NewMaximumValueIndicator(rsiIndicator, window),
 	}
 }
 
@@ -44,8 +44,8 @@ type stochRSIKIndicator struct {
 
 // NewFastStochasticRSIIndicator returns a derivative Indicator which returns the fast stochastic RSI indicator (%K)
 // for the given stochastic window.
-func NewFastStochasticRSIIndicator(stochasticRSI techan.Indicator, timeframe int) techan.Indicator {
-	return stochRSIKIndicator{stochasticRSI, timeframe}
+func NewFastStochasticRSIIndicator(stochasticRSI techan.Indicator, window int) techan.Indicator {
+	return stochRSIKIndicator{stochasticRSI, window}
 }
 
 func (k stochRSIKIndicator) Calculate(index int) big.Decimal {
@@ -59,8 +59,8 @@ type stochRSIDIndicator struct {
 
 // NewSlowStochasticRSIIndicator returns a derivative Indicator which returns the slow stochastic RSI indicator (%D)
 // for the given stochastic window.
-func NewSlowStochasticRSIIndicator(fastStochasticRSI techan.Indicator, timeframe int) techan.Indicator {
-	return stochRSIDIndicator{fastStochasticRSI, timeframe}
+func NewSlowStochasticRSIIndicator(fastStochasticRSI techan.Indicator, window int) techan.Indicator {
+	return stochRSIDIndicator{fastStochasticRSI, window}
 }
 
 func (d stochRSIDIndicator) Calculate(index int) big.Decimal {

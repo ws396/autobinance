@@ -6,14 +6,13 @@ import (
 	"github.com/adshao/go-binance/v2"
 	"github.com/sdcoffey/big"
 	"github.com/sdcoffey/techan"
-	"github.com/ws396/autobinance/internal/globals"
 )
 
-func GetSeries(klines []*binance.Kline) *techan.TimeSeries {
+func GetSeries(klines []*binance.Kline, timeframe time.Duration) *techan.TimeSeries {
 	series := techan.NewTimeSeries()
 
 	for _, data := range klines {
-		period := techan.NewTimePeriod(time.UnixMilli(data.OpenTime), time.Duration(globals.Timeframe)*time.Minute)
+		period := techan.NewTimePeriod(time.UnixMilli(data.OpenTime), timeframe)
 
 		candle := techan.NewCandle(period)
 		candle.OpenPrice = big.NewFromString(data.Open)

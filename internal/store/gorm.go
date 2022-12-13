@@ -34,7 +34,8 @@ func NewGORMClient(dialect gorm.Dialector) *GORMClient {
 	)
 
 	config := &gorm.Config{
-		Logger: newLogger,
+		Logger:      newLogger,
+		PrepareStmt: true,
 	}
 
 	if globals.SimulationMode {
@@ -69,7 +70,6 @@ func (c *GORMClient) AutoMigrateSettings() {
 		fields := []string{
 			"selected_symbols",
 			"selected_strategies",
-			//"available_symbols",
 			"available_strategies",
 		}
 		for _, v := range fields {
@@ -78,7 +78,12 @@ func (c *GORMClient) AutoMigrateSettings() {
 	}
 }
 
-func (c *GORMClient) GetAllSettings() (*Settings, error) {
+func (c *GORMClient) DropAll() {
+	c.Migrator().DropTable(&Setting{})
+	c.Migrator().DropTable(&Order{})
+}
+
+func (c *GORMClient) GetAllSettings() (map[string]Setting, error) {
 	var foundSettings []Setting
 	r := c.Find(&foundSettings)
 	if r.Error != nil {
@@ -87,29 +92,11 @@ func (c *GORMClient) GetAllSettings() (*Settings, error) {
 
 	m := map[string]Setting{}
 	for _, v := range foundSettings {
+		v.ValueArr = strings.Split(v.Value, ",")
 		m[v.Name] = v
 	}
 
-	return &Settings{
-		SelectedSymbols: Setting{
-			m["selected_symbols"].ID,
-			m["selected_symbols"].Name,
-			m["selected_symbols"].Value,
-			strings.Split(m["selected_symbols"].Value, ","),
-		},
-		SelectedStrategies: Setting{
-			m["selected_strategies"].ID,
-			m["selected_strategies"].Name,
-			m["selected_strategies"].Value,
-			strings.Split(m["selected_strategies"].Value, ","),
-		},
-		AvailableStrategies: Setting{
-			m["available_strategies"].ID,
-			m["available_strategies"].Name,
-			m["available_strategies"].Value,
-			strings.Split(m["available_strategies"].Value, ","),
-		},
-	}, nil
+	return m, nil
 }
 
 func (c *GORMClient) GetSetting(name string) Setting {
@@ -165,6 +152,9 @@ func (c *GORMClient) GetLastOrder(strategy, symbol string) (*Order, error) {
 	var foundOrder Order
 	r := c.Last(&foundOrder, "strategy = ? AND symbol = ?", strategy, symbol)
 	if r.Error != nil {
+		if errors.Is(r.Error, gorm.ErrRecordNotFound) {
+			return nil, globals.ErrOrderNotFound
+		}
 		return nil, r.Error
 	}
 
@@ -172,7 +162,7 @@ func (c *GORMClient) GetLastOrder(strategy, symbol string) (*Order, error) {
 }
 
 func (c *GORMClient) CreateOrder(order *Order) error {
-	r := c.Create(order)
+	r := c.Create(&order)
 	if r.Error != nil {
 		return r.Error
 	}

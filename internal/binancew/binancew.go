@@ -2,7 +2,6 @@ package binancew
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -18,8 +17,8 @@ var (
 type ExchangeClient interface {
 	CreateOrder(input, quantity, price string, orderType binance.SideType) (*binance.CreateOrderResponse, error)
 	GetOrders(symbol string) ([]*binance.Order, error)
-	GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error)
-	GetKlinesByPeriod(symbol string, timeframe uint, start, end time.Time) ([]*binance.Kline, error)
+	GetKlines(symbol, timeframe string) ([]*binance.Kline, error)
+	GetKlinesByPeriod(symbol, timeframe string, start, end time.Time) ([]*binance.Kline, error)
 	GetAccount() (*binance.Account, error)
 	GetCurrencies(symbol ...string) ([]binance.Balance, error)
 	GetAllSymbols() []string
@@ -63,9 +62,9 @@ func (client *ClientExt) GetOrders(symbol string) ([]*binance.Order, error) {
 	return orders, nil
 }
 
-func (client *ClientExt) GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error) {
+func (client *ClientExt) GetKlines(symbol, timeframe string) ([]*binance.Kline, error) {
 	klines, err := client.NewKlinesService().Symbol(symbol).
-		Interval(fmt.Sprint(timeframe) + "m").Do(context.Background())
+		Interval(timeframe).Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +72,9 @@ func (client *ClientExt) GetKlines(symbol string, timeframe uint) ([]*binance.Kl
 	return klines, nil
 }
 
-func (client *ClientExt) GetKlinesByPeriod(symbol string, timeframe uint, start, end time.Time) ([]*binance.Kline, error) {
+func (client *ClientExt) GetKlinesByPeriod(symbol, timeframe string, start, end time.Time) ([]*binance.Kline, error) {
 	klines, err := client.NewKlinesService().Symbol(symbol).
-		Interval(fmt.Sprint(timeframe) + "m").StartTime(start.Unix() * 1000).
+		Interval(timeframe).StartTime(start.Unix() * 1000).
 		EndTime(end.Unix() * 1000).Do(context.Background())
 	if err != nil {
 		return nil, err

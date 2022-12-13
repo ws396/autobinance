@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sdcoffey/big"
+
 	"github.com/adshao/go-binance/v2"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,8 +28,6 @@ import (
 	"github.com/ws396/autobinance/internal/strategies"
 	"github.com/ws396/autobinance/internal/techanext"
 	"github.com/ws396/autobinance/internal/util"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 var (
@@ -48,24 +48,20 @@ type Autobinance struct {
 	help           string
 	tradingRunning bool
 	stopTrading    chan bool
-	StoreClient    *store.GORMClient
+	StoreClient    store.StoreClient
 	ExchangeClient binancew.ExchangeClient
-	Settings       *store.Settings
+	Settings       map[string]store.Setting
 	TickerChan     <-chan time.Time
 }
 
 func InitialModel() Autobinance {
 	ti := textinput.New()
 	ti.Focus()
-	//ti.CharLimit = 156
 	ti.Width = 80
 
-	// Feels a bit wrong to put it here. But then again, it IS directly related to the main business logic of this app
-	ticker := time.NewTicker(time.Duration(globals.Timeframe) * time.Minute / 6)
-
+	ticker := time.NewTicker(globals.Durations[globals.Timeframe] / 6)
 	apiKey := os.Getenv("API_KEY")
 	secretKey := os.Getenv("SECRET_KEY")
-
 	var exchangeClient binancew.ExchangeClient
 	if globals.SimulationMode {
 		exchangeClient = binancew.NewExtClientSim(apiKey, secretKey)
@@ -73,17 +69,17 @@ func InitialModel() Autobinance {
 		exchangeClient = binancew.NewExtClient(apiKey, secretKey)
 	}
 
-	dialect := postgres.New(postgres.Config{
-		DSN: fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
-			os.Getenv("PGSQL_HOST"),
-			os.Getenv("PGSQL_PORT"),
-			os.Getenv("PGSQL_DB"),
-			os.Getenv("PGSQL_USER"),
-			os.Getenv("PGSQL_PASS"),
-		),
-		PreferSimpleProtocol: true, // disables implicit prepared statement usage. By default pgx automatically uses the extended protocol
-	})
-	storeClient := store.NewGORMClient(dialect)
+	/* 	dialect := postgres.New(postgres.Config{
+	   		DSN: fmt.Sprintf("host=%s port=%s dbname=%s user=%s password=%s sslmode=disable",
+	   			os.Getenv("PGSQL_HOST"),
+	   			os.Getenv("PGSQL_PORT"),
+	   			os.Getenv("PGSQL_DB"),
+	   			os.Getenv("PGSQL_USER"),
+	   			os.Getenv("PGSQL_PASS"),
+	   		),
+	   	})
+	   	storeClient := store.NewGORMClient(dialect) */
+	storeClient := store.NewInMemoryClient()
 	storeClient.AutoMigrateAll()
 
 	s, err := storeClient.GetAllSettings()
@@ -95,8 +91,7 @@ func InitialModel() Autobinance {
 	for k := range strategies.StrategiesInfo {
 		keys = append(keys, k)
 	}
-
-	s.AvailableStrategies = storeClient.UpdateSetting(s.AvailableStrategies.Name, strings.Join(keys, ","))
+	s["available_strategies"] = storeClient.UpdateSetting(s["available_strategies"].Name, strings.Join(keys, ","))
 
 	return Autobinance{
 		choice:         "root",
@@ -158,13 +153,13 @@ func (m *Autobinance) Logic() {
 		selectedStrategies := strings.Split(m.textInput.Value(), ",")
 
 		for _, v := range selectedStrategies {
-			if !util.Contains(m.Settings.AvailableStrategies.ValueArr, v) {
+			if !util.Contains(m.Settings["available_strategies"].ValueArr, v) {
 				m.err = globals.ErrWrongStrategyName
 				return
 			}
 		}
 
-		m.Settings.SelectedStrategies = m.StoreClient.UpdateSetting(m.Settings.SelectedStrategies.Name, m.textInput.Value())
+		m.Settings["selected_strategies"] = m.StoreClient.UpdateSetting(m.Settings["selected_strategies"].Name, m.textInput.Value())
 	case "3":
 		allSymbols := m.ExchangeClient.GetAllSymbols()
 		selectedSymbols := strings.Split(m.textInput.Value(), ",")
@@ -176,9 +171,9 @@ func (m *Autobinance) Logic() {
 			}
 		}
 
-		m.Settings.SelectedSymbols = m.StoreClient.UpdateSetting(m.Settings.SelectedSymbols.Name, m.textInput.Value())
+		m.Settings["selected_symbols"] = m.StoreClient.UpdateSetting(m.Settings["selected_symbols"].Name, m.textInput.Value())
 	case "8":
-		if len(m.Settings.SelectedSymbols.Value) == 0 {
+		if len(m.Settings["selected_symbols"].Value) == 0 {
 			m.err = globals.ErrSymbolsNotFound
 			return
 		}
@@ -190,7 +185,7 @@ func (m *Autobinance) Logic() {
 		}
 
 		// Visualize progress bar for this?
-		for _, s := range m.Settings.SelectedSymbols.ValueArr {
+		for _, s := range m.Settings["selected_symbols"].ValueArr {
 			err := download.KlinesCSVFromZips(s, globals.Timeframe, start, end)
 			if err != nil {
 				m.err = err
@@ -217,9 +212,9 @@ func (m *Autobinance) Logic() {
 		w := output.NewWriterCreator().CreateWriter(output.Excel)
 		m.StartTradingSession(w)
 	case "2":
-		m.Settings.SelectedStrategies = m.StoreClient.GetSetting(m.Settings.SelectedStrategies.Name)
+		m.Settings["selected_strategies"] = m.StoreClient.GetSetting(m.Settings["selected_strategies"].Name)
 	case "3":
-		m.Settings.SelectedSymbols = m.StoreClient.GetSetting(m.Settings.SelectedSymbols.Name)
+		m.Settings["selected_symbols"] = m.StoreClient.GetSetting(m.Settings["selected_symbols"].Name)
 	case "4":
 		foundOrders, err := m.StoreClient.GetAllOrders()
 		if err != nil {
@@ -235,22 +230,19 @@ func (m *Autobinance) Logic() {
 	case "6":
 		filesToRemove := []string{
 			output.Filename + ".txt",
-			output.Filename + ".xlsx",
 			"log_gorm.txt",
 			"log_misc.txt",
 			"log_error.txt",
 		}
 		for _, path := range filesToRemove {
-			os.Remove(path)
+			os.Truncate(path, 0)
 		}
+
+		os.Remove(output.Filename + ".xlsx")
 	case "7":
 		// Confirmation would be nice...
-		m.StoreClient.Migrator().DropTable(&store.Setting{})
-		m.StoreClient.Migrator().DropTable(&store.Order{})
-
+		m.StoreClient.DropAll()
 		m.StoreClient.AutoMigrateAll()
-	case "8":
-	case "9":
 	case "10":
 		m.StopTradingSession()
 	}
@@ -262,12 +254,12 @@ func (m *Autobinance) StartTradingSession(w output.Writer) {
 		m.choice = "root"
 		return
 	}
-	if len(m.Settings.SelectedStrategies.ValueArr) == 0 {
+	if len(m.Settings["selected_strategies"].ValueArr) == 0 {
 		m.err = globals.ErrStrategiesNotFound
 		m.choice = "root"
 		return
 	}
-	if len(m.Settings.SelectedSymbols.ValueArr) == 0 {
+	if len(m.Settings["selected_symbols"].ValueArr) == 0 {
 		m.err = globals.ErrSymbolsNotFound
 		m.choice = "root"
 		return
@@ -281,9 +273,9 @@ func (m *Autobinance) StartTradingSession(w output.Writer) {
 			case <-m.stopTrading:
 				return
 			case <-m.TickerChan:
-				chanSize := len(m.Settings.SelectedStrategies.ValueArr) * len(m.Settings.SelectedSymbols.ValueArr)
+				chanSize := len(m.Settings["selected_strategies"].ValueArr) * len(m.Settings["selected_symbols"].ValueArr)
 				dataChannel := make(chan *store.Order, chanSize)
-				for _, symbol := range m.Settings.SelectedSymbols.ValueArr {
+				for _, symbol := range m.Settings["selected_symbols"].ValueArr {
 					go func(symbol string) {
 						klines, err := m.ExchangeClient.GetKlines(symbol, globals.Timeframe)
 						if err != nil {
@@ -291,8 +283,8 @@ func (m *Autobinance) StartTradingSession(w output.Writer) {
 							return
 						}
 
-						series := techanext.GetSeries(klines)
-						for _, strategy := range m.Settings.SelectedStrategies.ValueArr {
+						series := techanext.GetSeries(klines, globals.Durations[globals.Timeframe])
+						for _, strategy := range m.Settings["selected_strategies"].ValueArr {
 							go func(strategy string) {
 								order, err := m.Trade(strategy, symbol, series)
 								if err != nil {
@@ -309,7 +301,7 @@ func (m *Autobinance) StartTradingSession(w output.Writer) {
 				for i := 0; i < cap(dataChannel); i++ {
 					data := <-dataChannel
 
-					if data != nil && data.Decision != globals.Hold {
+					if data != nil {
 						orders = append(orders, data)
 					}
 				}
@@ -332,55 +324,61 @@ func (m *Autobinance) StopTradingSession() {
 
 func (m *Autobinance) Trade(strategy, symbol string, series *techan.TimeSeries) (*store.Order, error) {
 	decision, indicators := strategies.StrategiesInfo[strategy].Handler(series)
+	order := &store.Order{
+		Strategy:   strategy,
+		Symbol:     symbol,
+		Decision:   decision,
+		Quantity:   0,
+		Price:      0,
+		Indicators: indicators,
+		Timeframe:  globals.Timeframe,
+		Successful: false,
+		CreatedAt:  time.Now(),
+	}
+
+	if decision == globals.Hold {
+		return order, nil
+	}
 
 	foundOrder, err := m.StoreClient.GetLastOrder(strategy, symbol)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err != nil && !errors.Is(err, globals.ErrOrderNotFound) {
 		return nil, err
 	}
 
 	if foundOrder != nil {
 		if (foundOrder.Decision == globals.Sell || foundOrder.Decision == "") && decision == globals.Sell {
 			//return nil, errors.New("err: no recent buy has been done on this symbol to initiate sell")
-			return nil, nil
+			return order, nil
 		} else if foundOrder.Decision == globals.Buy && decision == globals.Buy {
 			//return nil, errors.New("err: this position is already bought")
-			return nil, nil
+			return order, nil
 		}
 	} else if decision == globals.Sell {
-		return nil, nil
+		return order, nil
 	}
 
-	var quantity float64
+	assetPrice := series.LastCandle().ClosePrice
+	var quantity big.Decimal
 	switch decision {
-	case globals.Buy, globals.Hold:
-		quantity = globals.BuyAmount / series.LastCandle().ClosePrice.Float()
+	case globals.Buy:
+		quantity = big.NewDecimal(globals.BuyAmount).Div(assetPrice)
 	case globals.Sell:
-		quantity = foundOrder.Quantity
+		quantity = big.NewDecimal(foundOrder.Quantity)
 	}
 
-	price := series.LastCandle().ClosePrice.String()
-	// Getting the actual order from this might be useful, but keep in mind that GORM might not like the []*Fill field
-	// Could also just selectively add fields from this to store.Order below instead
-	_, err = m.ExchangeClient.CreateOrder(symbol, fmt.Sprintf("%f", quantity), price, binance.SideType(decision))
+	orderPrice := assetPrice.Mul(quantity)
+	order.Quantity = quantity.Float()
+	order.Price = orderPrice.Float()
+	order.Successful = true
+
+	_, err = m.ExchangeClient.CreateOrder(symbol, quantity.String(), orderPrice.String(), binance.SideType(decision))
 	if err != nil {
 		return nil, err
 	}
 
-	order := &store.Order{
-		Strategy:   strategy,
-		Symbol:     symbol,
-		Decision:   decision,
-		Quantity:   quantity,
-		Price:      series.LastCandle().ClosePrice.Float() * quantity,
-		Indicators: indicators,
-		Timeframe:  globals.Timeframe,
-	}
-
-	if decision != globals.Hold {
-		err := m.StoreClient.CreateOrder(order)
-		if err != nil {
-			return nil, err
-		}
+	err = m.StoreClient.CreateOrder(order)
+	if err != nil {
+		return nil, err
 	}
 
 	return order, nil
@@ -391,7 +389,7 @@ func (m *Autobinance) Backtest() {
 		m.info = "Only available in simulation mode"
 		return
 	}
-	if len(m.Settings.SelectedSymbols.ValueArr) == 0 {
+	if len(m.Settings["selected_symbols"].ValueArr) == 0 {
 		m.err = globals.ErrSymbolsNotFound
 		return
 	}
@@ -404,9 +402,9 @@ func (m *Autobinance) Backtest() {
 		return
 	}
 
-	for _, s := range m.Settings.SelectedSymbols.ValueArr {
+	for _, s := range m.Settings["selected_symbols"].ValueArr {
 		path := fmt.Sprintf(
-			"internal/testdata/%s_%dm_%s_%s.csv",
+			"internal/testdata/%s_%s_%s_%s.csv",
 			s,
 			globals.Timeframe,
 			start.Format("02-01-2006"),
@@ -453,11 +451,12 @@ func (m *Autobinance) Backtest() {
 	}
 
 	batchLimit := 60
-	btClient := binancew.NewClientBacktest(start, end, klinesFeed, batchLimit)
+	btExchangeClient := binancew.NewClientBacktest(start, end, klinesFeed, batchLimit)
+	//btStoreClient := store.NewInMemoryClient()
 	tickerChan := make(chan time.Time)
 	btModel := Autobinance{
 		StoreClient:    m.StoreClient,
-		ExchangeClient: btClient,
+		ExchangeClient: btExchangeClient,
 		Settings:       m.Settings,
 		TickerChan:     tickerChan,
 	}
@@ -465,10 +464,9 @@ func (m *Autobinance) Backtest() {
 	w := output.NewWriterCreator().CreateWriter(output.Stub)
 	btModel.StartTradingSession(w)
 
-	klinesLen := len(klinesFeed[m.Settings.SelectedSymbols.ValueArr[0]])
+	klinesLen := len(klinesFeed[m.Settings["selected_symbols"].ValueArr[0]])
 	for i := 0; i < klinesLen-batchLimit; i++ {
 		tickerChan <- time.Now()
-		binancew.BacktestIndex++
 	}
 
 	binancew.BacktestIndex = 0
@@ -536,13 +534,13 @@ func chosenView(m Autobinance) string {
 		msg = fmt.Sprint("Trading session started (you can still do other actions).")
 	case "2":
 		msg = fmt.Sprint(
-			"Available strategies: ", m.Settings.AvailableStrategies.Value, "\n",
-			"Currently selected strategies: ", m.Settings.SelectedStrategies.Value, "\n",
+			"Available strategies: ", m.Settings["available_strategies"].Value, "\n",
+			"Currently selected strategies: ", m.Settings["selected_strategies"].Value, "\n",
 			"Enter new strategy set (ex. example):",
 		)
 	case "3":
 		msg = fmt.Sprint(
-			"Currently selected symbols: ", m.Settings.SelectedSymbols.Value, "\n",
+			"Currently selected symbols: ", m.Settings["selected_symbols"].Value, "\n",
 			"Enter new symbols set (ex. LTCBTC,ETHBTC):",
 		)
 	case "4", "5":
@@ -554,14 +552,14 @@ func chosenView(m Autobinance) string {
 	case "8":
 		msg = fmt.Sprint(
 			"Testdata will be downloaded for next symbols:", "\n",
-			m.Settings.SelectedSymbols.Value, "\n",
+			m.Settings["selected_symbols"].Value, "\n",
 			"Enter the desired period of time (ex. 01-02-2021 30-03-2021):",
 		)
 	case "9":
 		msg = fmt.Sprint(
 			"Backtesting will be done for next strategies-symbols:", "\n",
-			m.Settings.SelectedStrategies.Value, "\n",
-			m.Settings.SelectedSymbols.Value, "\n",
+			m.Settings["selected_strategies"].Value, "\n",
+			m.Settings["selected_symbols"].Value, "\n",
 			"Enter the period for backtesting (ex. 01-02-2021 30-03-2021):",
 		)
 	case "10":

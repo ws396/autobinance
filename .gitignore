@@ -2,8 +2,7 @@
 !/.env.example
 /tmp
 /*.xlsx
-/log*
-/trade_history*
+/*.txt
 
 /internal/testdata/
 /internal/strategies/*

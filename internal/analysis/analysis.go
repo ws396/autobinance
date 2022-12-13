@@ -33,7 +33,7 @@ type Analysis struct {
 	SuccessfulSells uint      `json:"successfulSells"`
 	ProfitUSD       float64   `json:"profitUSD"`
 	SuccessRate     float64   `json:"successRate"`
-	Timeframe       uint      `json:"timeframe"`
+	Timeframe       string    `json:"timeframe"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
 

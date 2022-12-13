@@ -14,10 +14,11 @@ type StrategyInfo struct {
 // Add error handling?
 func AddStrategyInfo(strategy string, handler func(*techan.TimeSeries) (string, map[string]string), datakeys []string) {
 	datakeys = append(datakeys, "Current price",
-		"Time",
+		"Created at",
 		"Symbol",
 		"Decision",
 		"Strategy",
+		"Successful",
 	)
 
 	StrategiesInfo[strategy] = StrategyInfo{handler, datakeys}

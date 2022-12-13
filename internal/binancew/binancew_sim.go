@@ -26,11 +26,11 @@ func (client *ClientExtSim) GetOrders(symbol string) ([]*binance.Order, error) {
 	return nil, nil
 }
 
-func (client *ClientExtSim) GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error) {
+func (client *ClientExtSim) GetKlines(symbol, timeframe string) ([]*binance.Kline, error) {
 	return refClient.GetKlines(symbol, timeframe)
 }
 
-func (client *ClientExtSim) GetKlinesByPeriod(symbol string, timeframe uint, start, end time.Time) ([]*binance.Kline, error) {
+func (client *ClientExtSim) GetKlinesByPeriod(symbol, timeframe string, start, end time.Time) ([]*binance.Kline, error) {
 	return refClient.GetKlinesByPeriod(symbol, timeframe, start, end)
 }
 

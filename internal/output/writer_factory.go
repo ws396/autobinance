@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync/atomic"
 
+	"github.com/ws396/autobinance/internal/binancew"
 	"github.com/ws396/autobinance/internal/store"
 	"github.com/ws396/autobinance/internal/strategies"
 	"github.com/xuri/excelize/v2"
@@ -17,7 +19,7 @@ const (
 	Txt      action = "txt"
 	Excel    action = "excel"
 	Stub     action = "stub"
-	Filename string = "trade_history"
+	Filename string = "trade_attempts"
 )
 
 type Creator interface {
@@ -141,6 +143,8 @@ type StubWriter struct {
 }
 
 func (p *StubWriter) WriteToLog(orders []*store.Order) {
+	// Should probably be somewhere else...
+	atomic.AddInt64(&binancew.BacktestIndex, 1)
 }
 
 func orderToMap(data *store.Order) map[string]string {
@@ -150,6 +154,7 @@ func orderToMap(data *store.Order) map[string]string {
 	dataMap["Symbol"] = data.Symbol
 	dataMap["Decision"] = data.Decision
 	dataMap["Strategy"] = data.Strategy
+	dataMap["Successful"] = fmt.Sprint(data.Successful)
 
 	return dataMap
 }

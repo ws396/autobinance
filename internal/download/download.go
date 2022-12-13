@@ -65,7 +65,7 @@ func KlinesCSVFromAPI(filename, symbol string, timeframe uint, start, end time.T
 //
 // <base_url>/data/spot/monthly/klines/<symbol_in_uppercase>/<interval>/<symbol_in_uppercase>-<interval>-<year>-<month>.zip
 // <base_url>/data/spot/daily/klines/<symbol_in_uppercase>/<interval>/<symbol_in_uppercase>-<interval>-<year>-<month>-<day>.zip
-func KlinesCSVFromZips(symbol string, timeframe uint, start, end time.Time) error {
+func KlinesCSVFromZips(symbol, timeframe string, start, end time.Time) error {
 	var filename, url string
 
 	filepaths := []string{}
@@ -76,14 +76,14 @@ func KlinesCSVFromZips(symbol string, timeframe uint, start, end time.Time) erro
 
 	for !timepoint.After(end) {
 		if timepoint.Day() != 1 || timepoint.Month() == end.Month() {
-			filename = fmt.Sprintf("%s-%dm-%s.zip",
+			filename = fmt.Sprintf("%s-%s-%s.zip",
 				symbol,
 				timeframe,
 				timepoint.Format("2006-01-02"),
 			)
 
 			url = fmt.Sprintf(
-				"https://data.binance.vision/data/spot/daily/klines/%s/%dm/%s",
+				"https://data.binance.vision/data/spot/daily/klines/%s/%s/%s",
 				symbol,
 				timeframe,
 				filename,
@@ -91,14 +91,14 @@ func KlinesCSVFromZips(symbol string, timeframe uint, start, end time.Time) erro
 
 			timepoint = timepoint.AddDate(0, 0, 1)
 		} else {
-			filename = fmt.Sprintf("%s-%dm-%s.zip",
+			filename = fmt.Sprintf("%s-%s-%s.zip",
 				symbol,
 				timeframe,
 				timepoint.Format("2006-01"),
 			)
 
 			url = fmt.Sprintf(
-				"https://data.binance.vision/data/spot/monthly/klines/%s/%dm/%s",
+				"https://data.binance.vision/data/spot/monthly/klines/%s/%s/%s",
 				symbol,
 				timeframe,
 				filename,
@@ -125,7 +125,7 @@ func KlinesCSVFromZips(symbol string, timeframe uint, start, end time.Time) erro
 	err := extractKlinesToCSV(
 		filepaths,
 		fmt.Sprintf(
-			"%s%s_%dm_%s_%s.csv",
+			"%s%s_%s_%s_%s.csv",
 			path,
 			symbol,
 			timeframe,

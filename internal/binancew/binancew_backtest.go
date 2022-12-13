@@ -6,7 +6,7 @@ import (
 	"github.com/adshao/go-binance/v2"
 )
 
-var BacktestIndex = 0
+var BacktestIndex int64
 
 type BacktestClient struct {
 	ExchangeClient
@@ -20,10 +20,17 @@ func NewClientBacktest(start, end time.Time, klinesFeed map[string][]*binance.Kl
 	return &BacktestClient{NewExtClientSim("", ""), start, end, klinesFeed, batchLimit}
 }
 
-func (bc *BacktestClient) GetKlines(symbol string, timeframe uint) ([]*binance.Kline, error) {
-	bi := BacktestIndex 
+func (bc *BacktestClient) GetKlines(symbol string, timeframe string) ([]*binance.Kline, error) {
+	/* 	bi := BacktestIndex
+	   	klines := []*binance.Kline{}
+	   	for i := bi; i < bc.BatchLimit+bi; i++ {
+	   		klines = append(klines, bc.KlinesFeed[symbol][i])
+	   	}
+
+	   	return klines, nil */
+
 	klines := []*binance.Kline{}
-	for i := bi; i < bc.BatchLimit+bi; i++ {
+	for i := BacktestIndex; i < int64(bc.BatchLimit)+BacktestIndex; i++ {
 		klines = append(klines, bc.KlinesFeed[symbol][i])
 	}
 
