@@ -79,7 +79,6 @@ func (client *ClientExt) GetKlinesByPeriod(symbol, timeframe string, start, end 
 	if err != nil {
 		return nil, err
 	}
-	log.Println(klines, err)
 
 	return klines, nil
 }

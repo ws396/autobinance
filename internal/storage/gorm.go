@@ -1,4 +1,4 @@
-package store
+package storage
 
 import (
 	"errors"
@@ -17,10 +17,10 @@ type GORMClient struct {
 	*gorm.DB
 }
 
-func NewGORMClient(dialect gorm.Dialector) *GORMClient {
+func NewGORMClient(dialect gorm.Dialector) (*GORMClient, error) {
 	f, err := os.OpenFile("log_gorm.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 
 	newLogger := logger.New(
@@ -46,15 +46,16 @@ func NewGORMClient(dialect gorm.Dialector) *GORMClient {
 
 	db, err := gorm.Open(dialect, config)
 	if err != nil {
-		log.Panicln(err)
+		return nil, err
 	}
 
-	return &GORMClient{db}
+	return &GORMClient{db}, nil
 }
 
 func (c *GORMClient) AutoMigrateAll() {
 	c.AutoMigrateOrders()
 	c.AutoMigrateSettings()
+	c.AutoMigrateAnalyses()
 }
 
 func (c *GORMClient) AutoMigrateOrders() {
@@ -73,14 +74,19 @@ func (c *GORMClient) AutoMigrateSettings() {
 			"available_strategies",
 		}
 		for _, v := range fields {
-			c.CreateSetting(v, "")
+			c.StoreSetting(v, "")
 		}
 	}
+}
+
+func (c *GORMClient) AutoMigrateAnalyses() {
+	c.AutoMigrate(&Analysis{})
 }
 
 func (c *GORMClient) DropAll() {
 	c.Migrator().DropTable(&Setting{})
 	c.Migrator().DropTable(&Order{})
+	c.Migrator().DropTable(&Analysis{})
 }
 
 func (c *GORMClient) GetAllSettings() (map[string]Setting, error) {
@@ -99,43 +105,45 @@ func (c *GORMClient) GetAllSettings() (map[string]Setting, error) {
 	return m, nil
 }
 
-func (c *GORMClient) GetSetting(name string) Setting {
+func (c *GORMClient) GetSetting(name string) (Setting, error) {
 	var foundSetting Setting
 	r := c.First(&foundSetting, "name = ?", name)
 	if r.Error != nil {
-		log.Panicln(r.Error)
+		return Setting{}, r.Error
 	}
 
 	foundSetting.ValueArr = strings.Split(foundSetting.Value, ",")
 
-	return foundSetting
+	return foundSetting, nil
 }
 
-func (c *GORMClient) UpdateSetting(name, value string) Setting {
+func (c *GORMClient) UpdateSetting(name, value string) (Setting, error) {
 	var foundSetting Setting
 	r := c.First(&foundSetting, "name = ?", name)
 	if r.Error != nil {
-		log.Panicln(r.Error)
+		return Setting{}, r.Error
 	}
 
 	foundSetting.Value = value
 	foundSetting.ValueArr = strings.Split(value, ",")
 	r = c.Save(&foundSetting)
 	if r.Error != nil {
-		log.Panicln(r.Error)
+		return Setting{}, r.Error
 	}
 
-	return foundSetting
+	return foundSetting, nil
 }
 
-func (c *GORMClient) CreateSetting(name, value string) {
+func (c *GORMClient) StoreSetting(name, value string) error {
 	r := c.Create(&Setting{
 		Name:  name,
 		Value: value,
 	})
 	if r.Error != nil {
-		log.Panicln(r.Error)
+		return r.Error
 	}
+
+	return nil
 }
 
 func (c *GORMClient) GetAllOrders() ([]Order, error) {
@@ -161,8 +169,22 @@ func (c *GORMClient) GetLastOrder(strategy, symbol string) (*Order, error) {
 	return &foundOrder, nil
 }
 
-func (c *GORMClient) CreateOrder(order *Order) error {
+func (c *GORMClient) StoreOrder(order *Order) error {
 	r := c.Create(&order)
+	if r.Error != nil {
+		return r.Error
+	}
+
+	return nil
+}
+
+func (c *GORMClient) StoreAnalyses(analyses map[string]Analysis) error {
+	var sliceAnalyses []Analysis
+	for _, a := range analyses {
+		sliceAnalyses = append(sliceAnalyses, a)
+	}
+
+	r := c.Model(&Analysis{}).Create(sliceAnalyses)
 	if r.Error != nil {
 		return r.Error
 	}

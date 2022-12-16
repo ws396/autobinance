@@ -1,7 +1,6 @@
 package main_test
 
 import (
-	"log"
 	"regexp"
 	"testing"
 	"time"
@@ -9,7 +8,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/ws396/autobinance/cmd"
 	"github.com/ws396/autobinance/internal/binancew"
-	"github.com/ws396/autobinance/internal/store"
+	"github.com/ws396/autobinance/internal/storage"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -17,38 +16,38 @@ import (
 
 // Remove channels entirely?
 type mockWriter struct {
-	dataChan chan []*store.Order
+	dataChan chan []*storage.Order
 }
 
-func (p *mockWriter) WriteToLog(orders []*store.Order) {
+func (p *mockWriter) WriteToLog(orders []*storage.Order) error {
 	p.dataChan <- orders
-	log.Println("uh")
+
+	return nil
 }
 
 func TestTrade(t *testing.T) {
 	t.Run("successfully starts trading session and attempts one trade", func(t *testing.T) {
-		storeClient := &store.GORMClient{setupMockStore(t, mockExpect)}
+		storageClient := &storage.GORMClient{setupMockStorage(t, mockExpect)}
 
 		exchangeClient := binancew.NewExtClientSim("", "")
 		tickerChan := make(chan time.Time)
 		model := cmd.Autobinance{
-			StoreClient:    storeClient,
+			StorageClient:  storageClient,
 			ExchangeClient: exchangeClient,
-			Settings: map[string]store.Setting{
+			Settings: map[string]storage.Setting{
 				"selected_symbols":    {Name: "selected_symbols", Value: "LTCBTC", ValueArr: []string{"LTCBTC"}},
 				"selected_strategies": {Name: "selected_strategies", Value: "example", ValueArr: []string{"example"}},
 			},
 			TickerChan: tickerChan,
 		}
 		w := &mockWriter{
-			dataChan: make(chan []*store.Order),
+			dataChan: make(chan []*storage.Order),
 		}
 
 		model.StartTradingSession(w)
 
 		tickerChan <- time.Now()
 		data := <-w.dataChan
-		//log.Println(data)
 		got := data[0].Symbol
 		want := "LTCBTC"
 
@@ -74,13 +73,12 @@ func mockExpect(mock sqlmock.Sqlmock) {
 	mock.ExpectCommit()
 }
 
-// Will likely end up being used in several other test files
-func setupMockStore(t *testing.T, expectHandler func(sqlmock.Sqlmock)) *gorm.DB {
+// This will only be used in internal/storage/gorm_test.go. Everything else needs to be tested through in-memory storage.
+func setupMockStorage(t *testing.T, expectHandler func(sqlmock.Sqlmock)) *gorm.DB {
 	dbMock, mock, err := sqlmock.New()
 	if err != nil {
-		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
+		t.Fatal(err)
 	}
-	//defer dbMock.Close()
 
 	expectHandler(mock)
 
@@ -94,7 +92,7 @@ func setupMockStore(t *testing.T, expectHandler func(sqlmock.Sqlmock)) *gorm.DB 
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
-		log.Panicln(err)
+		t.Fatal(err)
 	}
 
 	return database

@@ -3,12 +3,12 @@ package output
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"sync/atomic"
 
 	"github.com/ws396/autobinance/internal/binancew"
-	"github.com/ws396/autobinance/internal/store"
+	"github.com/ws396/autobinance/internal/globals"
+	"github.com/ws396/autobinance/internal/storage"
 	"github.com/ws396/autobinance/internal/strategies"
 	"github.com/xuri/excelize/v2"
 )
@@ -23,11 +23,11 @@ const (
 )
 
 type Creator interface {
-	CreateWriter(action action) Writer
+	CreateWriter(action action) (Writer, error)
 }
 
 type Writer interface {
-	WriteToLog([]*store.Order)
+	WriteToLog([]*storage.Order) error
 }
 
 type ConcreteWriterCreator struct {
@@ -37,7 +37,7 @@ func NewWriterCreator() Creator {
 	return &ConcreteWriterCreator{}
 }
 
-func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
+func (p *ConcreteWriterCreator) CreateWriter(action action) (Writer, error) {
 	var w Writer
 
 	switch action {
@@ -48,26 +48,25 @@ func (p *ConcreteWriterCreator) CreateWriter(action action) Writer {
 	case Stub:
 		w = &StubWriter{}
 	default:
-		log.Fatalln("Unknown Action")
+		return nil, globals.ErrWriterNotFound
 	}
 
-	return w
+	return w, nil
 }
 
 type TxtWriter struct {
 }
 
-func (p *TxtWriter) WriteToLog(orders []*store.Order) {
+func (p *TxtWriter) WriteToLog(orders []*storage.Order) error {
 	if len(orders) == 0 {
-		return
+		return globals.ErrEmptyOrderList
 	}
 
 	f, err := os.OpenFile(Filename+".txt", os.O_WRONLY|os.O_APPEND, 0644)
 	if errors.Is(err, os.ErrNotExist) {
 		f, err = os.Create(Filename + ".txt")
 		if err != nil {
-			log.Fatalln(err)
-			return
+			return err
 		}
 	}
 	defer f.Close()
@@ -86,43 +85,44 @@ func (p *TxtWriter) WriteToLog(orders []*store.Order) {
 
 	_, err = f.WriteString(message)
 	if err != nil {
-		log.Fatalf("Got error while writing to a file. Err: %s", err.Error())
+		return err
 	}
+
+	return nil
 }
 
 type ExcelWriter struct {
 }
 
-func (p *ExcelWriter) WriteToLog(orders []*store.Order) {
+func (p *ExcelWriter) WriteToLog(orders []*storage.Order) error {
 	if len(orders) == 0 {
-		return
+		return globals.ErrEmptyOrderList
 	}
 	f, err := excelize.OpenFile(Filename + ".xlsx")
-	if errors.Is(err, os.ErrNotExist) {
-		f = excelize.NewFile()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			f = excelize.NewFile()
 
-		for k, v := range strategies.StrategiesInfo {
-			f.NewSheet(k)
+			for k, v := range strategies.StrategiesInfo {
+				f.NewSheet(k)
 
-			pos := 0
-			for _, v2 := range v.Datakeys {
-				f.SetCellValue(k, string(rune('A'+pos))+"1", v2)
-				pos++
+				pos := 0
+				for _, v2 := range v.Datakeys {
+					f.SetCellValue(k, string(rune('A'+pos))+"1", v2)
+					pos++
+				}
 			}
-		}
 
-		f.DeleteSheet("Sheet1")
+			f.DeleteSheet("Sheet1")
 
-		if err := f.SaveAs(Filename + ".xlsx"); err != nil {
-			log.Panicln(err)
-			return
+			if err := f.SaveAs(Filename + ".xlsx"); err != nil {
+				return err
+			}
+		} else {
+			return err
 		}
 	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			log.Panicln(err)
-		}
-	}()
+	defer f.Close()
 
 	for _, data := range orders {
 		rows, _ := f.GetRows(data.Strategy)
@@ -137,17 +137,21 @@ func (p *ExcelWriter) WriteToLog(orders []*store.Order) {
 	}
 
 	f.Save()
+
+	return nil
 }
 
 type StubWriter struct {
 }
 
-func (p *StubWriter) WriteToLog(orders []*store.Order) {
+func (p *StubWriter) WriteToLog(orders []*storage.Order) error {
 	// Should probably be somewhere else...
 	atomic.AddInt64(&binancew.BacktestIndex, 1)
+
+	return nil
 }
 
-func orderToMap(data *store.Order) map[string]string {
+func orderToMap(data *storage.Order) map[string]string {
 	dataMap := data.Indicators
 	dataMap["Current price"] = fmt.Sprintf("%v", data.Price)
 	dataMap["Created at"] = data.CreatedAt.Format("02-01-2006 15:04:05")

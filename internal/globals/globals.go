@@ -42,4 +42,6 @@ var (
 	ErrCouldNotDownloadFile  = errors.New("err: could not download file")
 	ErrNotInSimulationMode   = errors.New("err: only available in simulation mode")
 	ErrOrderNotFound         = errors.New("err: order not found")
+	ErrWriterNotFound        = errors.New("err: writer not found")
+	ErrEmptyOrderList        = errors.New("err: order list is empty")
 )

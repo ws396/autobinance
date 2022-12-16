@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/ws396/autobinance/internal/globals"
@@ -65,81 +66,101 @@ func KlinesCSVFromAPI(filename, symbol string, timeframe uint, start, end time.T
 //
 // <base_url>/data/spot/monthly/klines/<symbol_in_uppercase>/<interval>/<symbol_in_uppercase>-<interval>-<year>-<month>.zip
 // <base_url>/data/spot/daily/klines/<symbol_in_uppercase>/<interval>/<symbol_in_uppercase>-<interval>-<year>-<month>-<day>.zip
-func KlinesCSVFromZips(symbol, timeframe string, start, end time.Time) error {
-	var filename, url string
-
-	filepaths := []string{}
-	urls := []string{}
-	path := "internal/testdata/"
-	timepoint := start
+func KlinesCSVFromZips(symbols []string, timeframe string, start, end time.Time) error {
+	wg := &sync.WaitGroup{}
 	errs := make(chan error)
+	errsOuter := make(chan error)
 
-	for !timepoint.After(end) {
-		if timepoint.Day() != 1 || timepoint.Month() == end.Month() {
-			filename = fmt.Sprintf("%s-%s-%s.zip",
-				symbol,
-				timeframe,
-				timepoint.Format("2006-01-02"),
+	for _, symbol := range symbols {
+		wg.Add(1)
+		go func(symbol string) {
+			var filename, url string
+
+			filepaths := []string{}
+			urls := []string{}
+			path := "internal/testdata/"
+			timepoint := start
+
+			for !timepoint.After(end) {
+				if timepoint.Day() != 1 || timepoint.Month() == end.Month() {
+					filename = fmt.Sprintf("%s-%s-%s.zip",
+						symbol,
+						timeframe,
+						timepoint.Format("2006-01-02"),
+					)
+
+					url = fmt.Sprintf(
+						"https://data.binance.vision/data/spot/daily/klines/%s/%s/%s",
+						symbol,
+						timeframe,
+						filename,
+					)
+
+					timepoint = timepoint.AddDate(0, 0, 1)
+				} else {
+					filename = fmt.Sprintf("%s-%s-%s.zip",
+						symbol,
+						timeframe,
+						timepoint.Format("2006-01"),
+					)
+
+					url = fmt.Sprintf(
+						"https://data.binance.vision/data/spot/monthly/klines/%s/%s/%s",
+						symbol,
+						timeframe,
+						filename,
+					)
+
+					timepoint = timepoint.AddDate(0, 1, 0)
+				}
+
+				filepaths = append(filepaths, path+filename)
+				urls = append(urls, url)
+			}
+
+			for i := 0; i < len(filepaths) && i < len(urls); i++ {
+				go func(f, url string) {
+					errs <- downloadFile(f, url)
+				}(filepaths[i], urls[i])
+			}
+			for i := 0; i < len(filepaths) && i < len(urls); i++ {
+				if err := <-errs; err != nil {
+					errsOuter <- err
+				}
+			}
+
+			wg.Done()
+			wg.Wait()
+
+			// May be better to do this separately
+			err := extractKlinesToCSV(
+				filepaths,
+				fmt.Sprintf(
+					"%s%s_%s_%s_%s.csv",
+					path,
+					symbol,
+					timeframe,
+					start.Format("02-01-2006"),
+					end.Format("02-01-2006"),
+				),
 			)
+			if err != nil {
+				errsOuter <- err
+			}
 
-			url = fmt.Sprintf(
-				"https://data.binance.vision/data/spot/daily/klines/%s/%s/%s",
-				symbol,
-				timeframe,
-				filename,
-			)
+			for _, filepath := range filepaths {
+				err = os.Remove(filepath)
+				if err != nil {
+					errsOuter <- err
+				}
+			}
 
-			timepoint = timepoint.AddDate(0, 0, 1)
-		} else {
-			filename = fmt.Sprintf("%s-%s-%s.zip",
-				symbol,
-				timeframe,
-				timepoint.Format("2006-01"),
-			)
-
-			url = fmt.Sprintf(
-				"https://data.binance.vision/data/spot/monthly/klines/%s/%s/%s",
-				symbol,
-				timeframe,
-				filename,
-			)
-
-			timepoint = timepoint.AddDate(0, 1, 0)
-		}
-
-		filepaths = append(filepaths, path+filename)
-		urls = append(urls, url)
+			errsOuter <- nil
+		}(symbol)
 	}
 
-	for i := 0; i < len(filepaths) && i < len(urls); i++ {
-		go func(f, url string) {
-			errs <- downloadFile(f, url)
-		}(filepaths[i], urls[i])
-	}
-	for i := 0; i < len(filepaths); i++ {
-		if err := <-errs; err != nil {
-			return err
-		}
-	}
-
-	err := extractKlinesToCSV(
-		filepaths,
-		fmt.Sprintf(
-			"%s%s_%s_%s_%s.csv",
-			path,
-			symbol,
-			timeframe,
-			start.Format("02-01-2006"),
-			end.Format("02-01-2006"),
-		),
-	)
-	if err != nil {
-		return err
-	}
-
-	for _, filepath := range filepaths {
-		err = os.Remove(filepath)
-		if err != nil {
+	for i := 0; i < len(symbols); i++ {
+		if err := <-errsOuter; err != nil {
 			return err
 		}
 	}

@@ -1,47 +1,18 @@
 package analysis
 
 import (
+	"strings"
 	"time"
 
 	"github.com/ws396/autobinance/internal/globals"
-	"github.com/ws396/autobinance/internal/store"
+	"github.com/ws396/autobinance/internal/storage"
 )
 
-/*
-type Analysis struct {
-	ID              uint      `json:"id" gorm:"primary_key;auto_increment"`
-	Strategy        string    `json:"strategy" validate:"required"`
-	Symbol          string    `json:"symbol" validate:"required"`
-	Buys            uint      `json:"buys"`
-	Sells           uint      `json:"sells"`
-	SuccessfulSells uint      `json:"successfulSells"`
-	ProfitUSD       float64   `json:"profitUSD"`
-	SuccessRate     float64   `json:"successRate"`
-	Timeframe       uint      `json:"timeframe"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
-}
-
-func AutoMigrateAnalyses() {
-	store.Client.AutoMigrate(&Analysis{})
-}
-*/
-
-type Analysis struct {
-	Buys            uint      `json:"buys"`
-	Sells           uint      `json:"sells"`
-	SuccessfulSells uint      `json:"successfulSells"`
-	ProfitUSD       float64   `json:"profitUSD"`
-	SuccessRate     float64   `json:"successRate"`
-	Timeframe       string    `json:"timeframe"`
-	CreatedAt       time.Time `json:"createdAt"`
-}
-
-func CreateAnalysis(orders []store.Order) map[string]Analysis {
-	analyses := map[string]Analysis{}
+func CreateAnalyses(orders []storage.Order, start, end time.Time) map[string]storage.Analysis {
+	analyses := map[string]storage.Analysis{}
 	lastBuyPrices := map[string]float64{}
 	for _, o := range orders {
-		k := o.Strategy + o.Symbol
+		k := o.Strategy + "_" + o.Symbol
 		a := analyses[k]
 
 		if o.Decision == globals.Buy {
@@ -63,6 +34,11 @@ func CreateAnalysis(orders []store.Order) map[string]Analysis {
 
 	t := time.Now()
 	for k, a := range analyses {
+		ss := strings.Split(k, "_")
+		a.Strategy = ss[0]
+		a.Symbol = ss[1]
+		a.Start = start
+		a.End = end
 		a.CreatedAt = t
 		a.Timeframe = orders[0].Timeframe
 		analyses[k] = a

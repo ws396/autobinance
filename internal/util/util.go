@@ -2,14 +2,30 @@ package util
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ws396/autobinance/internal/globals"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
+
+var Logger *zap.Logger
+
+func InitZapLogger() {
+	config := zap.NewProductionEncoderConfig()
+	config.EncodeTime = zapcore.ISO8601TimeEncoder
+	/* 	fileEncoder := zapcore.NewJSONEncoder(config)
+	   	logFile, _ := os.OpenFile("log.json", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644) */
+	fileEncoder := zapcore.NewConsoleEncoder(config)
+	logFile, _ := os.OpenFile("log_error.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	writer := zapcore.AddSync(logFile)
+	defaultLogLevel := zapcore.DebugLevel
+	core := zapcore.NewCore(fileEncoder, writer, defaultLogLevel)
+	Logger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+}
 
 func ToSnakeCase(str string) string {
 	matchFirstCap := regexp.MustCompile("(.)([A-Z][a-z]+)")
@@ -21,22 +37,24 @@ func ToSnakeCase(str string) string {
 	return strings.ToLower(snake)
 }
 
-func WriteToLogMisc(data ...interface{}) {
+func WriteToLogMisc(data ...interface{}) error {
 	j, err := json.MarshalIndent(data, "", "    ")
 	if err != nil {
-		log.Panicln(err)
+		return err
 	}
 
 	f, err := os.OpenFile("log_misc.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	defer f.Close()
 
 	_, err = f.WriteString(time.Now().Format("02-01-2006 15:04:05") + "\n" + string(j) + "\n")
 	if err != nil {
-		log.Fatalf("Got error while writing to a file. Err: %s", err.Error())
+		return err
 	}
+
+	return nil
 }
 
 func IsRunningInContainer() bool {
