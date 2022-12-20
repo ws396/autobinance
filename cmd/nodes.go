@@ -80,8 +80,7 @@ func init() {
 						if errInner != nil {
 							m.HandleError(errInner)
 						}
-						util.WriteToLogMisc(m)
-						util.WriteToLogMisc("423423")
+
 						m.HandleError(err)
 					}
 				}()
