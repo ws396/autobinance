@@ -83,21 +83,24 @@ func SetupTrader() (*Trader, error) {
 }
 
 func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
-	if t.TradingRunning {
-		errChan <- globals.ErrTradingAlreadyRunning
-	}
-	if len(t.Settings["selected_strategies"].ValueArr) == 0 {
-		errChan <- globals.ErrStrategiesNotFound
-	}
-	if len(t.Settings["selected_symbols"].ValueArr) == 0 {
-		errChan <- globals.ErrSymbolsNotFound
-	}
-
-	t.TradingRunning = true
-	chanSize := len(t.Settings["selected_strategies"].ValueArr) * len(t.Settings["selected_symbols"].ValueArr)
-	ordersChan := make(chan *storage.Order)
-
 	go func() {
+		if t.TradingRunning {
+			errChan <- globals.ErrTradingAlreadyRunning
+			return
+		}
+		if len(t.Settings["selected_strategies"].ValueArr) == 0 {
+			errChan <- globals.ErrStrategiesNotFound
+			return
+		}
+		if len(t.Settings["selected_symbols"].ValueArr) == 0 {
+			errChan <- globals.ErrSymbolsNotFound
+			return
+		}
+
+		t.TradingRunning = true
+		chanSize := len(t.Settings["selected_strategies"].ValueArr) * len(t.Settings["selected_symbols"].ValueArr)
+		ordersChan := make(chan *storage.Order)
+
 		for {
 			select {
 			case <-t.TickerChan:
@@ -106,6 +109,7 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 						klines, err := t.ExchangeClient.GetKlines(symbol, globals.Timeframe)
 						if err != nil {
 							errChan <- err
+							return
 						}
 
 						series := techanext.GetSeries(klines, globals.Durations[globals.Timeframe])
@@ -114,6 +118,7 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 								order, err := t.Trade(strategy, symbol, series)
 								if err != nil {
 									errChan <- err
+									return
 								}
 
 								ordersChan <- order
@@ -134,6 +139,7 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 				err := w.WriteToLog(orders)
 				if err != nil {
 					errChan <- err
+					return
 				}
 			case <-t.StopTrading:
 				return

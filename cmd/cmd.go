@@ -49,7 +49,7 @@ func (m CLI) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-func (m CLI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *CLI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
@@ -104,7 +104,7 @@ func (m *CLI) QuitApp() (tea.Model, tea.Cmd) {
 }
 
 // The main view, which just calls the appropriate sub-view
-func (m CLI) View() string {
+func (m *CLI) View() string {
 	var errMsg string
 	if m.err != nil {
 		errMsg = m.err.Error()
@@ -116,7 +116,7 @@ func (m CLI) View() string {
 
 	return wordwrap.String(
 		indent.String(
-			"\n"+m.node.view(&m)+"\n\n"+
+			"\n"+m.node.view(m)+"\n\n"+
 				m.textInput.View()+"\n\n"+
 				border+"\n"+
 				m.info+"\n"+

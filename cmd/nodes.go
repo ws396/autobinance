@@ -73,12 +73,15 @@ func init() {
 
 				errChan := make(chan error)
 				m.T.StartTradingSession(w, errChan)
+
 				go func() {
 					if err := <-errChan; err != nil {
 						errInner := m.T.StopTradingSession()
 						if errInner != nil {
 							m.HandleError(errInner)
 						}
+						util.WriteToLogMisc(m)
+						util.WriteToLogMisc("423423")
 						m.HandleError(err)
 					}
 				}()
