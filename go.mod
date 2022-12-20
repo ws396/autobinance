@@ -13,6 +13,7 @@ require (
 	github.com/sdcoffey/big v0.7.0
 	github.com/sdcoffey/techan v0.12.1
 	github.com/xuri/excelize/v2 v2.6.1
+	go.uber.org/zap v1.24.0
 	gorm.io/driver/postgres v1.4.5
 	gorm.io/gorm v1.24.2
 )
@@ -57,7 +58,6 @@ require (
 	github.com/xuri/nfp v0.0.0-20220409054826-5e722a1d9e22 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.4.0 // indirect
 	golang.org/x/net v0.4.0 // indirect
 	golang.org/x/sys v0.3.0 // indirect

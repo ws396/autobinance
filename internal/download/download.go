@@ -68,8 +68,8 @@ func KlinesCSVFromAPI(filename, symbol string, timeframe uint, start, end time.T
 // <base_url>/data/spot/daily/klines/<symbol_in_uppercase>/<interval>/<symbol_in_uppercase>-<interval>-<year>-<month>-<day>.zip
 func KlinesCSVFromZips(symbols []string, timeframe string, start, end time.Time) error {
 	wg := &sync.WaitGroup{}
-	errs := make(chan error)
-	errsOuter := make(chan error)
+	errChan := make(chan error)
+	errChanOuter := make(chan error)
 
 	for _, symbol := range symbols {
 		wg.Add(1)
@@ -120,12 +120,12 @@ func KlinesCSVFromZips(symbols []string, timeframe string, start, end time.Time)
 
 			for i := 0; i < len(filepaths) && i < len(urls); i++ {
 				go func(f, url string) {
-					errs <- downloadFile(f, url)
+					errChan <- downloadFile(f, url)
 				}(filepaths[i], urls[i])
 			}
 			for i := 0; i < len(filepaths) && i < len(urls); i++ {
-				if err := <-errs; err != nil {
-					errsOuter <- err
+				if err := <-errChan; err != nil {
+					errChanOuter <- err
 				}
 			}
 
@@ -145,22 +145,22 @@ func KlinesCSVFromZips(symbols []string, timeframe string, start, end time.Time)
 				),
 			)
 			if err != nil {
-				errsOuter <- err
+				errChanOuter <- err
 			}
 
 			for _, filepath := range filepaths {
 				err = os.Remove(filepath)
 				if err != nil {
-					errsOuter <- err
+					errChanOuter <- err
 				}
 			}
 
-			errsOuter <- nil
+			errChanOuter <- nil
 		}(symbol)
 	}
 
 	for i := 0; i < len(symbols); i++ {
-		if err := <-errsOuter; err != nil {
+		if err := <-errChanOuter; err != nil {
 			return err
 		}
 	}

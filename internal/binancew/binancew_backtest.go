@@ -21,14 +21,6 @@ func NewClientBacktest(start, end time.Time, klinesFeed map[string][]*binance.Kl
 }
 
 func (bc *BacktestClient) GetKlines(symbol string, timeframe string) ([]*binance.Kline, error) {
-	/* 	bi := BacktestIndex
-	   	klines := []*binance.Kline{}
-	   	for i := bi; i < bc.BatchLimit+bi; i++ {
-	   		klines = append(klines, bc.KlinesFeed[symbol][i])
-	   	}
-
-	   	return klines, nil */
-
 	klines := []*binance.Kline{}
 	for i := BacktestIndex; i < int64(bc.BatchLimit)+BacktestIndex; i++ {
 		klines = append(klines, bc.KlinesFeed[symbol][i])

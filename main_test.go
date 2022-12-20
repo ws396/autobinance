@@ -6,15 +6,14 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/ws396/autobinance/cmd"
 	"github.com/ws396/autobinance/internal/binancew"
 	"github.com/ws396/autobinance/internal/storage"
+	"github.com/ws396/autobinance/internal/trader"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
-// Remove channels entirely?
 type mockWriter struct {
 	dataChan chan []*storage.Order
 }
@@ -31,7 +30,7 @@ func TestTrade(t *testing.T) {
 
 		exchangeClient := binancew.NewExtClientSim("", "")
 		tickerChan := make(chan time.Time)
-		model := cmd.Autobinance{
+		model := trader.Trader{
 			StorageClient:  storageClient,
 			ExchangeClient: exchangeClient,
 			Settings: map[string]storage.Setting{
@@ -44,7 +43,8 @@ func TestTrade(t *testing.T) {
 			dataChan: make(chan []*storage.Order),
 		}
 
-		model.StartTradingSession(w)
+		errChan := make(chan error)
+		model.StartTradingSession(w, errChan)
 
 		tickerChan <- time.Now()
 		data := <-w.dataChan
