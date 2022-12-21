@@ -34,9 +34,9 @@ var (
 
 func init() {
 	root = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			tradingStatus := "OFF"
-			if m.T.TradingRunning {
+			if cli.T.TradingRunning {
 				tradingStatus = "ON"
 			}
 
@@ -60,73 +60,81 @@ func init() {
 				"9) Run backtest", "\n",
 				"10) Quit trading session",
 			)
+
 			return msg
 		},
-		action: func(m *CLI) *ViewNode {
-			switch m.textInput.Value() {
+		action: func(cli *CLI) *ViewNode {
+			switch cli.textInput.Value() {
 			case "1":
 				w, err := output.NewWriterCreator().CreateWriter(output.Excel)
 				if err != nil {
-					m.HandleError(err)
+					cli.HandleError(err)
 					return nil
 				}
 
 				errChan := make(chan error)
-				m.T.StartTradingSession(w, errChan)
-
+				cli.T.StartTradingSession(w, errChan)
 				go func() {
 					if err := <-errChan; err != nil {
-						errInner := m.T.StopTradingSession()
+						errInner := cli.T.StopTradingSession()
 						if errInner != nil {
-							m.HandleError(errInner)
+							cli.HandleError(errInner)
 						}
 
-						m.HandleError(err)
+						cli.HandleError(err)
 					}
 				}()
 
 				return root_1
 			case "2":
 				var err error
-				m.T.Settings["selected_strategies"], err = m.T.StorageClient.GetSetting(m.T.Settings["selected_strategies"].Name)
+				cli.T.Settings["selected_strategies"], err = cli.T.StorageClient.GetSetting(
+					cli.T.Settings["selected_strategies"].Name,
+				)
 				if err != nil {
-					m.HandleError(err)
+					cli.HandleError(err)
 					return nil
 				}
 
 				return root_2
 			case "3":
 				var err error
-				m.T.Settings["selected_symbols"], err = m.T.StorageClient.GetSetting(m.T.Settings["selected_symbols"].Name)
+				cli.T.Settings["selected_symbols"], err = cli.T.StorageClient.GetSetting(
+					cli.T.Settings["selected_symbols"].Name,
+				)
 				if err != nil {
-					m.HandleError(err)
+					cli.HandleError(err)
 					return nil
 				}
 
 				return root_3
 			case "4":
-				foundOrders, err := m.T.StorageClient.GetAllOrders()
+				foundOrders, err := cli.T.StorageClient.GetAllOrders()
 				if err != nil {
-					m.HandleError(err)
+					cli.HandleError(err)
 					return nil
 				}
 
 				if len(foundOrders) == 0 {
-					m.HandleError(globals.ErrEmptyOrderList)
+					cli.HandleError(globals.ErrEmptyOrderList)
 					return nil
 				}
 
-				analyses := analysis.CreateAnalyses(foundOrders, foundOrders[0].CreatedAt, foundOrders[len(foundOrders)-1].CreatedAt)
-				err = m.T.StorageClient.StoreAnalyses(analyses)
+				analyses := analysis.CreateAnalyses(
+					foundOrders,
+					foundOrders[0].CreatedAt,
+					foundOrders[len(foundOrders)-1].CreatedAt,
+				)
+				err = cli.T.StorageClient.StoreAnalyses(analyses)
 				if err != nil {
-					m.HandleError(err)
+					cli.HandleError(err)
 					return nil
 				}
 
 				util.WriteToLogMisc(analyses)
 				return root_4
 			case "5":
-				util.WriteToLogMisc(m.T.ExchangeClient.GetCurrencies())
+				util.WriteToLogMisc(cli.T.ExchangeClient.GetCurrencies())
 				return root_5
 			case "6":
 				filesToRemove := []string{
@@ -143,23 +151,23 @@ func init() {
 				return root_6
 			case "7":
 				// Confirmation would be nice...
-				m.T.StorageClient.DropAll()
-				m.T.StorageClient.AutoMigrateAll()
+				cli.T.StorageClient.DropAll()
+				cli.T.StorageClient.AutoMigrateAll()
 				return root_7
 			case "8":
 				return root_8
 			case "9":
 				return root_9
 			case "10":
-				err := m.T.StopTradingSession()
+				err := cli.T.StopTradingSession()
 				if err != nil {
-					m.HandleError(err)
+					cli.HandleError(err)
 					return nil
 				}
 
 				return root
 			default:
-				m.info = "Invalid choice"
+				cli.info = "Invalid choice"
 			}
 
 			return nil
@@ -167,38 +175,43 @@ func init() {
 	}
 
 	root_1 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint(
 				"Trading session started (press Enter to go back to root).",
 			)
 		},
-		action: func(m *CLI) *ViewNode {
+		action: func(cli *CLI) *ViewNode {
 			return root
 		},
 	}
 
 	root_2 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint(
-				"Available strategies: ", m.T.Settings["available_strategies"].Value, "\n",
-				"Currently selected strategies: ", m.T.Settings["selected_strategies"].Value, "\n",
+				"Available strategies: ",
+				cli.T.Settings["available_strategies"].Value, "\n",
+				"Currently selected strategies: ",
+				cli.T.Settings["selected_strategies"].Value, "\n",
 				"Enter new strategy set (ex. example):",
 			)
 		},
-		action: func(m *CLI) *ViewNode {
-			selectedStrategies := strings.Split(m.textInput.Value(), ",")
+		action: func(cli *CLI) *ViewNode {
+			selectedStrategies := strings.Split(cli.textInput.Value(), ",")
 
 			for _, v := range selectedStrategies {
-				if !util.Contains(m.T.Settings["available_strategies"].ValueArr, v) {
-					m.err = globals.ErrWrongStrategyName
+				if !util.Contains(cli.T.Settings["available_strategies"].ValueArr, v) {
+					cli.err = globals.ErrWrongStrategyName
 					return nil
 				}
 			}
 
 			var err error
-			m.T.Settings["selected_strategies"], err = m.T.StorageClient.UpdateSetting(m.T.Settings["selected_strategies"].Name, m.textInput.Value())
+			cli.T.Settings["selected_strategies"], err = cli.T.StorageClient.UpdateSetting(
+				cli.T.Settings["selected_strategies"].Name,
+				cli.textInput.Value(),
+			)
 			if err != nil {
-				m.HandleError(err)
+				cli.HandleError(err)
 				return nil
 			}
 
@@ -207,27 +220,31 @@ func init() {
 	}
 
 	root_3 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint(
-				"Currently selected symbols: ", m.T.Settings["selected_symbols"].Value, "\n",
+				"Currently selected symbols: ",
+				cli.T.Settings["selected_symbols"].Value, "\n",
 				"Enter new symbols set (ex. LTCBTC,ETHBTC):",
 			)
 		},
-		action: func(m *CLI) *ViewNode {
-			allSymbols := m.T.ExchangeClient.GetAllSymbols()
-			selectedSymbols := strings.Split(m.textInput.Value(), ",")
+		action: func(cli *CLI) *ViewNode {
+			allSymbols := cli.T.ExchangeClient.GetAllSymbols()
+			selectedSymbols := strings.Split(cli.textInput.Value(), ",")
 
 			for _, v := range selectedSymbols {
 				if !util.Contains(allSymbols, v) {
-					m.err = globals.ErrWrongSymbol
+					cli.err = globals.ErrWrongSymbol
 					return nil
 				}
 			}
 
 			var err error
-			m.T.Settings["selected_symbols"], err = m.T.StorageClient.UpdateSetting(m.T.Settings["selected_symbols"].Name, m.textInput.Value())
+			cli.T.Settings["selected_symbols"], err = cli.T.StorageClient.UpdateSetting(
+				cli.T.Settings["selected_symbols"].Name,
+				cli.textInput.Value(),
+			)
 			if err != nil {
-				m.HandleError(err)
+				cli.HandleError(err)
 				return nil
 			}
 			return root
@@ -235,98 +252,103 @@ func init() {
 	}
 
 	root_4 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint("Output in log_misc.txt")
 		},
-		action: func(m *CLI) *ViewNode {
+		action: func(cli *CLI) *ViewNode {
 			return root
 		},
 	}
 
 	root_5 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint("Output in log_misc.txt")
 		},
-		action: func(m *CLI) *ViewNode {
+		action: func(cli *CLI) *ViewNode {
 			return root
 		},
 	}
 
 	root_6 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint("Logs cleared")
 		},
-		action: func(m *CLI) *ViewNode {
+		action: func(cli *CLI) *ViewNode {
 			return root
 		},
 	}
 
 	root_7 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint("All tables have been recreated")
 		},
-		action: func(m *CLI) *ViewNode {
+		action: func(cli *CLI) *ViewNode {
 			return root
 		},
 	}
 
 	root_8 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint(
 				"Testdata will be downloaded for next symbols:", "\n",
-				m.T.Settings["selected_symbols"].Value, "\n",
+				cli.T.Settings["selected_symbols"].Value, "\n",
 				"Enter the desired period of time (ex. 01-02-2021 30-03-2021):",
 			)
 		},
-		action: func(m *CLI) *ViewNode {
-			if len(m.T.Settings["selected_symbols"].Value) == 0 {
-				m.err = globals.ErrSymbolsNotFound
+		action: func(cli *CLI) *ViewNode {
+			if len(cli.T.Settings["selected_symbols"].Value) == 0 {
+				cli.err = globals.ErrSymbolsNotFound
 				return nil
 			}
 
-			start, end, err := util.ExtractTimepoints(m.textInput.Value())
+			start, end, err := util.ExtractTimepoints(cli.textInput.Value())
 			if err != nil {
-				m.HandleError(err)
+				cli.HandleError(err)
 				return nil
 			}
 
 			// Visualize progress bar for this?
 
-			err = download.KlinesCSVFromZips(m.T.Settings["selected_symbols"].ValueArr, globals.Timeframe, start, end)
+			err = download.KlinesCSVFromZips(
+				cli.T.Settings["selected_symbols"].ValueArr,
+				globals.Timeframe,
+				start,
+				end,
+			)
 			if err != nil {
-				m.HandleError(err)
+				cli.HandleError(err)
 				return nil
 			}
 
-			m.info = "Testdata downloaded"
+			cli.info = "Testdata downloaded"
 
 			return root
 		},
 	}
 
 	root_9 = &ViewNode{
-		view: func(m *CLI) string {
+		view: func(cli *CLI) string {
 			return fmt.Sprint(
 				"Backtesting will be done for next strategies-symbols:", "\n",
-				m.T.Settings["selected_strategies"].Value, "\n",
-				m.T.Settings["selected_symbols"].Value, "\n",
+				cli.T.Settings["selected_strategies"].Value, "\n",
+				cli.T.Settings["selected_symbols"].Value, "\n",
 				"Enter the period for backtesting (ex. 01-02-2021 30-03-2021):",
 			)
 		},
-		action: func(m *CLI) *ViewNode {
-			analyses, err := backtest.Backtest(m.textInput.Value(), m.T.Settings)
+		action: func(cli *CLI) *ViewNode {
+			analyses, err := backtest.Backtest(cli.textInput.Value(), cli.T.Settings)
 			if err != nil {
-				m.HandleError(err)
+				cli.HandleError(err)
 				return nil
 			}
 
-			err = m.T.StorageClient.StoreAnalyses(analyses)
+			err = cli.T.StorageClient.StoreAnalyses(analyses)
 			if err != nil {
-				m.HandleError(err)
+				cli.HandleError(err)
 				return nil
 			}
 
-			m.info = "Backtesting successful. Analyses written to storage and log_misc."
+			cli.info = "Backtesting successful. Analyses written to storage and log_misc."
 
 			return root
 		},
@@ -334,10 +356,10 @@ func init() {
 
 	/*
 		root_10 = &ViewNode{
-			view: func(m *CLI) string {
+			view: func(cli *CLI) string {
 				return fmt.Sprint("Trading session stopped.")
 			},
-			action: func(m *CLI) *ViewNode {
+			action: func(cli *CLI) *ViewNode {
 				return root
 			},
 		}

@@ -53,7 +53,8 @@ func (client *ClientExt) CreateOrder(input, quantity, price string, orderType bi
 }
 
 func (client *ClientExt) GetOrders(symbol string) ([]*binance.Order, error) {
-	orders, err := client.NewListOrdersService().Symbol(symbol).
+	orders, err := client.NewListOrdersService().
+		Symbol(symbol).
 		Do(context.Background(), binance.WithRecvWindow(10000))
 	if err != nil {
 		return nil, err
@@ -63,8 +64,10 @@ func (client *ClientExt) GetOrders(symbol string) ([]*binance.Order, error) {
 }
 
 func (client *ClientExt) GetKlines(symbol, timeframe string) ([]*binance.Kline, error) {
-	klines, err := client.NewKlinesService().Symbol(symbol).
-		Interval(timeframe).Do(context.Background())
+	klines, err := client.NewKlinesService().
+		Symbol(symbol).
+		Interval(timeframe).
+		Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +76,12 @@ func (client *ClientExt) GetKlines(symbol, timeframe string) ([]*binance.Kline, 
 }
 
 func (client *ClientExt) GetKlinesByPeriod(symbol, timeframe string, start, end time.Time) ([]*binance.Kline, error) {
-	klines, err := client.NewKlinesService().Symbol(symbol).
-		Interval(timeframe).StartTime(start.Unix() * 1000).
-		EndTime(end.Unix() * 1000).Do(context.Background())
+	klines, err := client.NewKlinesService().
+		Symbol(symbol).
+		Interval(timeframe).
+		StartTime(start.Unix() * 1000).
+		EndTime(end.Unix() * 1000).
+		Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +90,8 @@ func (client *ClientExt) GetKlinesByPeriod(symbol, timeframe string, start, end 
 }
 
 func (client *ClientExt) GetAccount() (*binance.Account, error) {
-	account, err := client.NewGetAccountService().Do(context.Background())
+	account, err := client.NewGetAccountService().
+		Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +119,8 @@ func (client *ClientExt) GetCurrencies(symbol ...string) ([]binance.Balance, err
 
 func (client *ClientExt) GetAllSymbols() []string {
 	once.Do(func() {
-		info, err := client.NewExchangeInfoService().Do(context.Background())
+		info, err := client.NewExchangeInfoService().
+			Do(context.Background())
 		if err != nil {
 			log.Panicln(err)
 		}

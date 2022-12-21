@@ -21,8 +21,14 @@ func NewWilliamsRIndicator(series *techan.TimeSeries, window int) techan.Indicat
 
 func (wri williamsRIndicator) Calculate(index int) big.Decimal {
 	closingPrices := techan.NewClosePriceIndicator(wri.series).Calculate(index)
-	highestHigh := techan.NewMaximumValueIndicator(techan.NewHighPriceIndicator(wri.series), wri.window).Calculate(index)
-	lowestLow := techan.NewMinimumValueIndicator(techan.NewLowPriceIndicator(wri.series), wri.window).Calculate(index)
+	highestHigh := techan.NewMaximumValueIndicator(
+		techan.NewHighPriceIndicator(wri.series),
+		wri.window,
+	).Calculate(index)
+	lowestLow := techan.NewMinimumValueIndicator(
+		techan.NewLowPriceIndicator(wri.series),
+		wri.window,
+	).Calculate(index)
 
 	if highestHigh.EQ(lowestLow) {
 		return big.NewDecimal(0)

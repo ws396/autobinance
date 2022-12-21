@@ -79,31 +79,26 @@ func Backtest(input string, settings map[string]storage.Setting) (map[string]sto
 	btExchangeClient := binancew.NewClientBacktest(start, end, klinesFeed, batchLimit)
 	btStorageClient := storage.NewInMemoryClient()
 	tickerChan := make(chan time.Time)
-	btModel := trader.Trader{
+	btTrader := trader.Trader{
 		StorageClient:  btStorageClient,
 		ExchangeClient: btExchangeClient,
 		Settings:       settings,
 		TickerChan:     tickerChan,
 	}
-
 	w, err := output.NewWriterCreator().CreateWriter(output.Stub)
 	if err != nil {
 		return nil, err
 	}
 
 	errChan := make(chan error)
-	btModel.StartTradingSession(w, errChan)
-
+	btTrader.StartTradingSession(w, errChan)
 	klinesLen := len(klinesFeed[settings["selected_symbols"].ValueArr[0]])
 	for i := 0; i < klinesLen-batchLimit; i++ {
 		tickerChan <- time.Now()
-	}
-
-	close(errChan)
-
-	if err := <-errChan; err != nil {
-		btModel.StopTradingSession()
-		return nil, err
+		if err := <-errChan; err != nil {
+			btTrader.StopTradingSession()
+			return nil, err
+		}
 	}
 
 	foundOrders, err := btStorageClient.GetAllOrders()

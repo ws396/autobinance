@@ -45,85 +45,84 @@ func InitialModel() (*CLI, error) {
 	}, nil
 }
 
-func (m CLI) Init() tea.Cmd {
+func (cli CLI) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-func (m *CLI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (cli *CLI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
-			return m.QuitApp()
+			return cli.QuitApp()
 		case tea.KeyEnter:
-			m.Logic()
-			m.textInput.Reset()
+			cli.Logic()
+			cli.textInput.Reset()
 		}
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
+		cli.width = msg.Width
 	}
 
-	m.textInput, cmd = m.textInput.Update(msg)
+	cli.textInput, cmd = cli.textInput.Update(msg)
 
-	return m, cmd
+	return cli, cmd
 }
 
-func (m *CLI) clearMessages() {
-	m.err = nil
-	m.info = ""
+func (cli *CLI) clearMessages() {
+	cli.err = nil
+	cli.info = ""
 }
 
-func (m *CLI) Logic() {
-	m.clearMessages()
+func (cli *CLI) Logic() {
+	cli.clearMessages()
 
-	if m.textInput.Value() == "\\q" {
-		m.node = root
+	if cli.textInput.Value() == "\\q" {
+		cli.node = root
 		return
 	}
 
-	if nextNode := m.node.action(m); nextNode != nil {
-		m.node = nextNode
+	if nextNode := cli.node.action(cli); nextNode != nil {
+		cli.node = nextNode
 	}
 }
 
-func (m *CLI) HandleError(err error) {
+func (cli *CLI) HandleError(err error) {
 	util.Logger.Error(err.Error())
-	m.err = err
+	cli.err = err
 }
 
-func (m *CLI) HandleFatal(err error) {
+func (cli *CLI) HandleFatal(err error) {
 	util.Logger.Fatal(err.Error())
 }
 
-func (m *CLI) QuitApp() (tea.Model, tea.Cmd) {
-	m.quitting = true
-
-	return m, tea.Quit
+func (cli *CLI) QuitApp() (tea.Model, tea.Cmd) {
+	cli.quitting = true
+	return cli, tea.Quit
 }
 
 // The main view, which just calls the appropriate sub-view
-func (m *CLI) View() string {
+func (cli *CLI) View() string {
 	var errMsg string
-	if m.err != nil {
-		errMsg = m.err.Error()
+	if cli.err != nil {
+		errMsg = cli.err.Error()
 	}
 
 	err := errStyle.Render(errMsg)
-	help := helpStyle.Render(m.help)
+	help := helpStyle.Render(cli.help)
 	border := borderStyle.Render(" ───────────────────────────────────────────")
 
 	return wordwrap.String(
 		indent.String(
-			"\n"+m.node.view(m)+"\n\n"+
-				m.textInput.View()+"\n\n"+
+			"\n"+cli.node.view(cli)+"\n\n"+
+				cli.textInput.View()+"\n\n"+
 				border+"\n"+
-				m.info+"\n"+
+				cli.info+"\n"+
 				err+"\n"+
 				help,
 			4,
 		),
-		m.width,
+		cli.width,
 	)
 }

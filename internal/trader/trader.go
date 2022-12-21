@@ -98,7 +98,8 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 		}
 
 		t.TradingRunning = true
-		chanSize := len(t.Settings["selected_strategies"].ValueArr) * len(t.Settings["selected_symbols"].ValueArr)
+		chanSize := len(t.Settings["selected_strategies"].ValueArr) *
+			len(t.Settings["selected_symbols"].ValueArr)
 		ordersChan := make(chan *storage.Order)
 
 		for {
@@ -112,7 +113,10 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 							return
 						}
 
-						series := techanext.GetSeries(klines, globals.Durations[globals.Timeframe])
+						series := techanext.GetSeries(
+							klines,
+							globals.Durations[globals.Timeframe],
+						)
 						for _, strategy := range t.Settings["selected_strategies"].ValueArr {
 							go func(strategy string) {
 								order, err := t.Trade(strategy, symbol, series)
@@ -128,7 +132,7 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 				}
 
 				var orders []*storage.Order
-				for i := 0; i < chanSize; i++ {
+				for i := 0; i < chanSize; i++ { // Need something different here?
 					data := <-ordersChan
 
 					if data != nil {
@@ -141,6 +145,8 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 					errChan <- err
 					return
 				}
+
+				errChan <- nil
 			case <-t.StopTrading:
 				return
 			}
@@ -208,7 +214,12 @@ func (t *Trader) Trade(strategy, symbol string, series *techan.TimeSeries) (*sto
 	order.Price = orderPrice.Float()
 	order.Successful = true
 
-	_, err = t.ExchangeClient.CreateOrder(symbol, quantity.String(), orderPrice.String(), binance.SideType(decision))
+	_, err = t.ExchangeClient.CreateOrder(
+		symbol,
+		quantity.String(),
+		orderPrice.String(),
+		binance.SideType(decision),
+	)
 	if err != nil {
 		return nil, err
 	}

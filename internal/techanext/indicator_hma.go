@@ -23,7 +23,10 @@ func (hma HMAIndicator) Calculate(index int) big.Decimal {
 	wma1 := NewWMAIndicator(hma.indicator, hma.window/2)
 	wma2 := NewWMAIndicator(hma.indicator, hma.window)
 
-	result := NewWMAIndicator(newInnerSubHMAIndicator(wma1, wma2), int(math.Floor(math.Sqrt(float64(hma.window))))).Calculate(index)
+	result := NewWMAIndicator(
+		newInnerSubHMAIndicator(wma1, wma2),
+		int(math.Floor(math.Sqrt(float64(hma.window)))),
+	).Calculate(index)
 	//ta.wma(2*ta.wma(src, length/2)-ta.wma(src, length), math.floor(math.sqrt(length)))
 
 	return result

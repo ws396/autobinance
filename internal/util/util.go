@@ -49,7 +49,9 @@ func WriteToLogMisc(data ...interface{}) error {
 	}
 	defer f.Close()
 
-	_, err = f.WriteString(time.Now().Format("02-01-2006 15:04:05") + "\n" + string(j) + "\n")
+	_, err = f.WriteString(
+		time.Now().Format("02-01-2006 15:04:05") + "\n" + string(j) + "\n",
+	)
 	if err != nil {
 		return err
 	}

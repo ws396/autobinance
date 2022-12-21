@@ -26,7 +26,8 @@ func CreateAnalyses(orders []storage.Order, start, end time.Time) map[string]sto
 
 			a.ProfitUSD += o.Price
 			a.Sells += 1
-			a.SuccessRate = float64(analyses[k].SuccessfulSells) / float64(analyses[k].Sells)
+			a.SuccessRate = float64(analyses[k].SuccessfulSells) /
+				float64(analyses[k].Sells)
 		}
 
 		analyses[k] = a
