@@ -75,13 +75,15 @@ func init() {
 				errChan := make(chan error)
 				cli.T.StartTradingSession(w, errChan)
 				go func() {
-					if err := <-errChan; err != nil {
-						errInner := cli.T.StopTradingSession()
-						if errInner != nil {
-							cli.HandleError(errInner)
-						}
+					for err := range errChan {
+						if err != nil {
+							errInner := cli.T.StopTradingSession()
+							if errInner != nil {
+								cli.HandleError(errInner)
+							}
 
-						cli.HandleError(err)
+							cli.HandleError(err)
+						}
 					}
 				}()
 
@@ -347,6 +349,8 @@ func init() {
 				cli.HandleError(err)
 				return nil
 			}
+
+			util.WriteToLogMisc(analyses)
 
 			cli.info = "Backtesting successful. Analyses written to storage and log_misc."
 

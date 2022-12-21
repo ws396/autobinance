@@ -21,7 +21,6 @@ import (
 
 type Trader struct {
 	TradingRunning bool
-	StopTrading    chan bool
 	StorageClient  storage.StorageClient
 	ExchangeClient binancew.ExchangeClient
 	Settings       map[string]storage.Setting
@@ -74,7 +73,6 @@ func SetupTrader() (*Trader, error) {
 	}
 
 	return &Trader{
-		StopTrading:    make(chan bool),
 		StorageClient:  storageClient,
 		ExchangeClient: exchangeClient,
 		Settings:       s,
@@ -102,54 +100,49 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 			len(t.Settings["selected_symbols"].ValueArr)
 		ordersChan := make(chan *storage.Order)
 
-		for {
-			select {
-			case <-t.TickerChan:
-				for _, symbol := range t.Settings["selected_symbols"].ValueArr {
-					go func(symbol string) {
-						klines, err := t.ExchangeClient.GetKlines(symbol, globals.Timeframe)
-						if err != nil {
-							errChan <- err
-							return
-						}
-
-						series := techanext.GetSeries(
-							klines,
-							globals.Durations[globals.Timeframe],
-						)
-						for _, strategy := range t.Settings["selected_strategies"].ValueArr {
-							go func(strategy string) {
-								order, err := t.Trade(strategy, symbol, series)
-								if err != nil {
-									errChan <- err
-									return
-								}
-
-								ordersChan <- order
-							}(strategy)
-						}
-					}(symbol)
-				}
-
-				var orders []*storage.Order
-				for i := 0; i < chanSize; i++ { // Need something different here?
-					data := <-ordersChan
-
-					if data != nil {
-						orders = append(orders, data)
+		for t.TradingRunning {
+			<-t.TickerChan
+			for _, symbol := range t.Settings["selected_symbols"].ValueArr {
+				go func(symbol string) {
+					klines, err := t.ExchangeClient.GetKlines(symbol, globals.Timeframe)
+					if err != nil {
+						errChan <- err
+						return
 					}
-				}
 
-				err := w.WriteToLog(orders)
-				if err != nil {
-					errChan <- err
-					return
-				}
+					series := techanext.GetSeries(
+						klines,
+						globals.Durations[globals.Timeframe],
+					)
+					for _, strategy := range t.Settings["selected_strategies"].ValueArr {
+						go func(strategy string) {
+							order, err := t.Trade(strategy, symbol, series)
+							if err != nil {
+								errChan <- err
+								return
+							}
 
-				errChan <- nil
-			case <-t.StopTrading:
+							ordersChan <- order
+						}(strategy)
+					}
+				}(symbol)
+			}
+
+			var orders []*storage.Order
+			for i := 0; i < chanSize; i++ { // Need something different here?
+				data := <-ordersChan
+				if data != nil {
+					orders = append(orders, data)
+				}
+			}
+
+			err := w.WriteToLog(orders)
+			if err != nil {
+				errChan <- err
 				return
 			}
+
+			errChan <- nil
 		}
 	}()
 }
@@ -157,7 +150,6 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 func (t *Trader) StopTradingSession() error {
 	if t.TradingRunning {
 		t.TradingRunning = false
-		t.StopTrading <- true
 	} else {
 		return globals.ErrTradingNotRunning
 	}
