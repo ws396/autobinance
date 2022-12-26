@@ -12,6 +12,10 @@ func CreateAnalyses(orders []storage.Order, start, end time.Time) map[string]sto
 	analyses := map[string]storage.Analysis{}
 	lastBuyPrices := map[string]float64{}
 	for _, o := range orders {
+		if !o.Successful {
+			continue
+		}
+
 		k := o.Strategy + "_" + o.Symbol
 		a := analyses[k]
 
@@ -26,8 +30,13 @@ func CreateAnalyses(orders []storage.Order, start, end time.Time) map[string]sto
 
 			a.ProfitUSD += o.Price
 			a.Sells += 1
-			a.SuccessRate = float64(analyses[k].SuccessfulSells) /
-				float64(analyses[k].Sells)
+
+			if a.SuccessfulSells != 0 {
+				a.SuccessRate = float64(a.SuccessfulSells) /
+					float64(a.Sells) * 100
+			} else {
+				a.SuccessRate = 0
+			}
 		}
 
 		analyses[k] = a

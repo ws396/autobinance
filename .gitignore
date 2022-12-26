@@ -4,7 +4,7 @@
 /*.xlsx
 /*.txt
 
-/internal/testdata/
+/internal/backtest/data/
 /internal/strategies/*
 !/internal/strategies/strategies.go
 !/internal/strategies/strategy_example.go

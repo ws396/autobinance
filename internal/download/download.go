@@ -14,52 +14,6 @@ import (
 	"github.com/ws396/autobinance/internal/globals"
 )
 
-// Limited to 500 candles per request. This approach requires batch processing.
-// Could possibly use timestamps as correlation ids for concurrent usage?
-/*
-func KlinesCSVFromAPI(filename, symbol string, timeframe uint, start, end time.Time) error {
-	f, err := os.Create(filename)
-	if err != nil {
-		return err
-	}
-
-	writer := csv.NewWriter(f)
-
-	err = writer.Write([]string{
-		"opentime", "open", "close", "low", "high", "volume",
-	})
-	if err != nil {
-		return err
-	}
-
-	client := binancew.NewExtClientSim("", "")
-	klines, err := client.GetKlinesByPeriod(symbol, timeframe, start, end)
-	if err != nil {
-		return err
-	}
-
-	for _, kline := range klines {
-		data := []string{
-			time.Unix(0, kline.OpenTime*int64(time.Millisecond)).Format("02-01-2006, 15:04:05"),
-			kline.Open,
-			kline.Close,
-			kline.Low,
-			kline.High,
-			kline.Volume,
-		}
-
-		err := writer.Write(data)
-		if err != nil {
-			return err
-		}
-	}
-
-	writer.Flush()
-
-	return nil
-}
-*/
-
 // Works better with full months.
 //
 // Endpoint formats:
@@ -72,55 +26,14 @@ func KlinesCSVFromZips(symbols []string, timeframe string, start, end time.Time)
 	errChanOuter := make(chan error)
 
 	for _, symbol := range symbols {
-		wg.Add(1)
 		go func(symbol string) {
-			var filename, url string
-
-			filepaths := []string{}
-			urls := []string{}
-			path := "internal/testdata/"
-			timepoint := start
-
-			for !timepoint.After(end) {
-				if timepoint.Day() != 1 || timepoint.Month() == end.Month() {
-					filename = fmt.Sprintf("%s-%s-%s.zip",
-						symbol,
-						timeframe,
-						timepoint.Format("2006-01-02"),
-					)
-
-					url = fmt.Sprintf(
-						"https://data.binance.vision/data/spot/daily/klines/%s/%s/%s",
-						symbol,
-						timeframe,
-						filename,
-					)
-
-					timepoint = timepoint.AddDate(0, 0, 1)
-				} else {
-					filename = fmt.Sprintf("%s-%s-%s.zip",
-						symbol,
-						timeframe,
-						timepoint.Format("2006-01"),
-					)
-
-					url = fmt.Sprintf(
-						"https://data.binance.vision/data/spot/monthly/klines/%s/%s/%s",
-						symbol,
-						timeframe,
-						filename,
-					)
-
-					timepoint = timepoint.AddDate(0, 1, 0)
-				}
-
-				filepaths = append(filepaths, path+filename)
-				urls = append(urls, url)
-			}
+			filepaths, urls := generateFilepathsAndURLs(symbol, timeframe, start, end)
 
 			for i := 0; i < len(filepaths) && i < len(urls); i++ {
+				wg.Add(1)
 				go func(f, url string) {
 					errChan <- downloadFile(f, url)
+					wg.Done()
 				}(filepaths[i], urls[i])
 			}
 			for i := 0; i < len(filepaths) && i < len(urls); i++ {
@@ -129,20 +42,12 @@ func KlinesCSVFromZips(symbols []string, timeframe string, start, end time.Time)
 				}
 			}
 
-			wg.Done()
 			wg.Wait()
 
 			// May be better to do this separately
 			err := extractKlinesToCSV(
 				filepaths,
-				fmt.Sprintf(
-					"%s%s_%s_%s_%s.csv",
-					path,
-					symbol,
-					timeframe,
-					start.Format("02-01-2006"),
-					end.Format("02-01-2006"),
-				),
+				getCSVPath(symbol, timeframe, start, end),
 			)
 			if err != nil {
 				errChanOuter <- err
@@ -166,6 +71,78 @@ func KlinesCSVFromZips(symbols []string, timeframe string, start, end time.Time)
 	}
 
 	return nil
+}
+
+func generateFilepathsAndURLs(symbol, timeframe string, start, end time.Time) ([]string, []string) {
+	var filename, url string
+
+	filepaths := []string{}
+	urls := []string{}
+	timepoint := start
+
+	for !timepoint.After(end) {
+		if timepoint.Day() != 1 || timepoint.Month() == end.Month() {
+			filename = getZipNameDaily(symbol, timeframe, timepoint)
+			url = getURLDaily(symbol, timeframe, filename)
+			timepoint = timepoint.AddDate(0, 0, 1)
+		} else {
+			filename = getZipNameMonthly(symbol, timeframe, timepoint)
+			url = getURLMonthly(symbol, timeframe, filename)
+			timepoint = timepoint.AddDate(0, 1, 0)
+		}
+
+		filepaths = append(filepaths, globals.BacktestDataDir+filename)
+		urls = append(urls, url)
+	}
+
+	return filepaths, urls
+}
+
+func getZipNameDaily(symbol, timeframe string, timepoint time.Time) string {
+	return fmt.Sprintf("%s-%s-%s.zip",
+		symbol,
+		timeframe,
+		timepoint.Format("2006-01-02"),
+	)
+}
+
+func getZipNameMonthly(symbol, timeframe string, timepoint time.Time) string {
+	return fmt.Sprintf("%s-%s-%s.zip",
+		symbol,
+		timeframe,
+		timepoint.Format("2006-01"),
+	)
+}
+
+func getURLDaily(symbol, timeframe, filename string) string {
+	return fmt.Sprintf(
+		"%sdata/spot/daily/klines/%s/%s/%s",
+		globals.BacktestDataBaseURL,
+		symbol,
+		timeframe,
+		filename,
+	)
+}
+
+func getURLMonthly(symbol, timeframe, filename string) string {
+	return fmt.Sprintf(
+		"%sdata/spot/daily/klines/%s/%s/%s",
+		globals.BacktestDataBaseURL,
+		symbol,
+		timeframe,
+		filename,
+	)
+}
+
+func getCSVPath(symbol, timeframe string, start, end time.Time) string {
+	return fmt.Sprintf(
+		"%s%s_%s_%s_%s.csv",
+		globals.BacktestDataDir,
+		symbol,
+		timeframe,
+		start.Format("02-01-2006"),
+		end.Format("02-01-2006"),
+	)
 }
 
 func extractKlinesToCSV(srcs []string, dest string) error {
@@ -237,7 +214,7 @@ func downloadFile(dest string, url string) error {
 		return globals.ErrCouldNotDownloadFile
 	}
 
-	// Writer the body to file
+	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return err

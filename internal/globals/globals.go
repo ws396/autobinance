@@ -14,7 +14,11 @@ const (
 )
 
 var (
-	SimulationMode = true
+	SimulationMode bool = true
+
+	BacktestDataBaseURL string = "https://data.binance.vision/"
+	BacktestDataDir     string = "internal/backtest/data/"
+	TestDataDir         string = "internal/testutil/data/"
 
 	Durations = map[string]time.Duration{
 		"1s":  time.Second,

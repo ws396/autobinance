@@ -33,7 +33,8 @@ func Backtest(input string, settings map[string]storage.Setting) (map[string]sto
 
 	for _, s := range settings["selected_symbols"].ValueArr {
 		path := fmt.Sprintf(
-			"internal/testdata/%s_%s_%s_%s.csv",
+			"%s%s_%s_%s_%s.csv",
+			globals.BacktestDataDir,
 			s,
 			globals.Timeframe,
 			start.Format("02-01-2006"),

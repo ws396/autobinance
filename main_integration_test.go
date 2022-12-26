@@ -78,13 +78,14 @@ func mockExpect(mock sqlmock.Sqlmock) {
 	mock.ExpectQuery(
 		regexp.QuoteMeta(
 			`INSERT INTO "orders" 
-			("strategy","symbol","decision","quantity","price","indicators","timeframe","created_at") 
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING "id"`,
+			("strategy","symbol","decision","quantity","price","indicators","timeframe","successful","created_at") 
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING "id"`,
 		),
 	).
 		WithArgs(
 			"example",
 			"LTCBTC",
+			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
