@@ -1,6 +1,9 @@
 package strategies
 
-import "github.com/sdcoffey/techan"
+import (
+	"github.com/sdcoffey/techan"
+	"github.com/ws396/autobinance/internal/globals"
+)
 
 var (
 	StrategiesInfo = map[string]StrategyInfo{}
@@ -22,4 +25,14 @@ func AddStrategyInfo(strategy string, handler func(*techan.TimeSeries) (string, 
 	)
 
 	StrategiesInfo[strategy] = StrategyInfo{handler, datakeys}
+}
+
+func RunStrategy(strategy string, series *techan.TimeSeries) (string, map[string]string, error) {
+	if _, ok := StrategiesInfo[strategy]; !ok {
+		return "", nil, globals.ErrWrongStrategyName
+	}
+
+	decision, indicators := StrategiesInfo[strategy].Handler(series)
+
+	return decision, indicators, nil
 }

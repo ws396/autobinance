@@ -158,7 +158,11 @@ func (t *Trader) StopTradingSession() error {
 }
 
 func (t *Trader) Trade(strategy, symbol string, series *techan.TimeSeries) (*storage.Order, error) {
-	decision, indicators := strategies.StrategiesInfo[strategy].Handler(series)
+	decision, indicators, err := strategies.RunStrategy(strategy, series)
+	if err != nil {
+		return nil, err
+	}
+
 	order := &storage.Order{
 		Strategy:   strategy,
 		Symbol:     symbol,
@@ -201,7 +205,7 @@ func (t *Trader) Trade(strategy, symbol string, series *techan.TimeSeries) (*sto
 		quantity = big.NewDecimal(foundOrder.Quantity)
 	}
 
-	orderPrice := assetPrice.Mul(quantity)
+	orderPrice := assetPrice //.Mul(quantity)
 	order.Quantity = quantity.Float()
 	order.Price = orderPrice.Float()
 	order.Successful = true

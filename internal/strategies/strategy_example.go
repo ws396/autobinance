@@ -7,21 +7,21 @@ import (
 
 func init() {
 	AddStrategyInfo("example", StrategyExample, []string{
-		"EMA0",
-		"EMA1",
+		"SMA0",
+		"SMA1",
 	})
 }
 
 type buyRuleExample struct {
-	EMA50  techan.Indicator
+	SMA10  techan.Indicator
 	series *techan.TimeSeries
 }
 
 func (r buyRuleExample) IsSatisfied() bool {
 	l := len(r.series.Candles)
 
-	a0 := r.EMA50.Calculate(l - 2)
-	a1 := r.EMA50.Calculate(l - 1)
+	a0 := r.SMA10.Calculate(l - 3)
+	a1 := r.SMA10.Calculate(l - 1)
 	if !(r.series.LastCandle().ClosePrice.GT(a1) && a1.GT(a0)) {
 		return false
 	}
@@ -30,15 +30,15 @@ func (r buyRuleExample) IsSatisfied() bool {
 }
 
 type sellRuleExample struct {
-	EMA50  techan.Indicator
+	SMA10  techan.Indicator
 	series *techan.TimeSeries
 }
 
 func (r sellRuleExample) IsSatisfied() bool {
 	l := len(r.series.Candles)
 
-	a0 := r.EMA50.Calculate(l - 2)
-	a1 := r.EMA50.Calculate(l - 1)
+	a0 := r.SMA10.Calculate(l - 3)
+	a1 := r.SMA10.Calculate(l - 1)
 	if !(r.series.LastCandle().ClosePrice.LT(a1) && a1.LT(a0)) {
 		return false
 	}
@@ -48,10 +48,10 @@ func (r sellRuleExample) IsSatisfied() bool {
 
 func StrategyExample(series *techan.TimeSeries) (string, map[string]string) {
 	closePrices := techan.NewClosePriceIndicator(series)
-	EMA50 := techan.NewEMAIndicator(closePrices, 50)
+	SMA10 := techan.NewSimpleMovingAverage(closePrices, 10)
 
-	buyRule := buyRuleExample{EMA50, series}
-	sellRule := sellRuleExample{EMA50, series}
+	buyRule := buyRuleExample{SMA10, series}
+	sellRule := sellRuleExample{SMA10, series}
 
 	result := globals.Hold
 	if buyRule.IsSatisfied() {
@@ -61,8 +61,8 @@ func StrategyExample(series *techan.TimeSeries) (string, map[string]string) {
 	}
 
 	indicators := map[string]string{
-		"EMA0": EMA50.Calculate(len(series.Candles) - 2).String(),
-		"EMA1": EMA50.Calculate(len(series.Candles) - 1).String(),
+		"SMA0": SMA10.Calculate(len(series.Candles) - 3).String(),
+		"SMA1": SMA10.Calculate(len(series.Candles) - 1).String(),
 	}
 
 	return result, indicators

@@ -21,14 +21,14 @@ func CreateAnalyses(orders []storage.Order, start, end time.Time) map[string]sto
 
 		if o.Decision == globals.Buy {
 			a.Buys += 1
-			a.ProfitUSD -= o.Price
+			a.ProfitUSD -= o.Price * o.Quantity
 			lastBuyPrices[k] = o.Price
 		} else if o.Decision == globals.Sell {
 			if lastBuyPrices[k] < o.Price {
 				a.SuccessfulSells += 1
 			}
 
-			a.ProfitUSD += o.Price
+			a.ProfitUSD += o.Price * o.Quantity
 			a.Sells += 1
 
 			if a.SuccessfulSells != 0 {
