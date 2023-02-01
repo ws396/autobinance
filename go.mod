@@ -8,10 +8,13 @@ require (
 	github.com/charmbracelet/bubbles v0.14.0
 	github.com/charmbracelet/bubbletea v0.23.1
 	github.com/charmbracelet/lipgloss v0.6.0
+	github.com/charmbracelet/wish v1.0.0
+	github.com/gliderlabs/ssh v0.3.5
 	github.com/joho/godotenv v1.4.0
 	github.com/muesli/reflow v0.3.0
 	github.com/sdcoffey/big v0.7.0
 	github.com/sdcoffey/techan v0.12.1
+	github.com/stretchr/testify v1.8.1
 	github.com/xuri/excelize/v2 v2.6.1
 	go.uber.org/zap v1.24.0
 	gorm.io/driver/postgres v1.4.5
@@ -19,9 +22,13 @@ require (
 )
 
 require (
+	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52 v1.2.1 // indirect
 	github.com/bitly/go-simplejson v0.5.0 // indirect
+	github.com/caarlos0/sshmarshal v0.1.0 // indirect
+	github.com/charmbracelet/keygen v0.3.0 // indirect
+	github.com/charmbracelet/ssh v0.0.0-20221117183211-483d43d97103 // indirect
 	github.com/containerd/console v1.0.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
@@ -42,6 +49,7 @@ require (
 	github.com/mattn/go-isatty v0.0.16 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.14 // indirect
+	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
@@ -53,7 +61,6 @@ require (
 	github.com/richardlehane/msoleps v1.0.3 // indirect
 	github.com/rivo/uniseg v0.4.3 // indirect
 	github.com/rogpeppe/go-internal v1.9.0 // indirect
-	github.com/stretchr/testify v1.8.1 // indirect
 	github.com/xuri/efp v0.0.0-20220603152613-6918739fd470 // indirect
 	github.com/xuri/nfp v0.0.0-20220409054826-5e722a1d9e22 // indirect
 	go.uber.org/atomic v1.10.0 // indirect

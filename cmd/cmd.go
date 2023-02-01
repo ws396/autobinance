@@ -40,7 +40,7 @@ func InitialModel() (*CLI, error) {
 	return &CLI{
 		node:      root,
 		textInput: ti,
-		help:      "\\q - back to root",
+		help:      "\\b - back to root, \\q - quit CLI",
 		T:         t,
 	}, nil
 }
@@ -49,17 +49,25 @@ func (cli CLI) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+type quitMsg struct{}
+
 func (cli *CLI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
+	case quitMsg:
+		return cli.QuitApp()
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			return cli.QuitApp()
 		case tea.KeyEnter:
-			cli.Logic()
+			newMsg := cli.Logic()
+			newCmd := func() tea.Msg {
+				return newMsg
+			}
 			cli.textInput.Reset()
+			return cli, newCmd
 		}
 	case tea.WindowSizeMsg:
 		cli.width = msg.Width
@@ -75,17 +83,22 @@ func (cli *CLI) clearMessages() {
 	cli.info = ""
 }
 
-func (cli *CLI) Logic() {
+func (cli *CLI) Logic() tea.Msg {
 	cli.clearMessages()
 
-	if cli.textInput.Value() == "\\q" {
+	switch cli.textInput.Value() {
+	case "\\b":
 		cli.node = root
-		return
+		return nil
+	case "\\q":
+		return quitMsg{}
 	}
 
 	if nextNode := cli.node.action(cli); nextNode != nil {
 		cli.node = nextNode
 	}
+
+	return nil
 }
 
 func (cli *CLI) HandleError(err error) {

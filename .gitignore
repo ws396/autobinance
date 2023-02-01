@@ -3,6 +3,7 @@
 /tmp
 /*.xlsx
 /*.txt
+/autobinance
 
 /internal/backtest/data/
 /internal/strategies/*
