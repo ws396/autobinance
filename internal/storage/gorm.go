@@ -98,7 +98,7 @@ func (c *GORMClient) GetAllSettings() (map[string]Setting, error) {
 
 	m := map[string]Setting{}
 	for _, v := range foundSettings {
-		v.ValueArr = strings.Split(v.Value, ",")
+		v.ValueArr = strings.Split(v.Value, " ")
 		m[v.Name] = v
 	}
 
@@ -112,7 +112,7 @@ func (c *GORMClient) GetSetting(name string) (Setting, error) {
 		return Setting{}, r.Error
 	}
 
-	foundSetting.ValueArr = strings.Split(foundSetting.Value, ",")
+	foundSetting.ValueArr = strings.Split(foundSetting.Value, " ")
 
 	return foundSetting, nil
 }
@@ -125,7 +125,7 @@ func (c *GORMClient) UpdateSetting(name, value string) (Setting, error) {
 	}
 
 	foundSetting.Value = value
-	foundSetting.ValueArr = strings.Split(value, ",")
+	foundSetting.ValueArr = strings.Split(value, " ")
 	r = c.Save(&foundSetting)
 	if r.Error != nil {
 		return Setting{}, r.Error

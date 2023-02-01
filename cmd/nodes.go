@@ -194,11 +194,11 @@ func init() {
 				cli.T.Settings["available_strategies"].Value, "\n",
 				"Currently selected strategies: ",
 				cli.T.Settings["selected_strategies"].Value, "\n",
-				"Enter new strategy set (ex. example):",
+				"Enter new strategy set (ex. example other):",
 			)
 		},
 		action: func(cli *CLI) *ViewNode {
-			selectedStrategies := strings.Split(cli.textInput.Value(), ",")
+			selectedStrategies := strings.Split(cli.textInput.Value(), " ")
 
 			for _, v := range selectedStrategies {
 				if !util.Contains(cli.T.Settings["available_strategies"].ValueArr, v) {
@@ -226,12 +226,12 @@ func init() {
 			return fmt.Sprint(
 				"Currently selected symbols: ",
 				cli.T.Settings["selected_symbols"].Value, "\n",
-				"Enter new symbols set (ex. LTCBTC,ETHBTC):",
+				"Enter new symbols set (ex. LTCBTC ETHBTC):",
 			)
 		},
 		action: func(cli *CLI) *ViewNode {
 			allSymbols := cli.T.ExchangeClient.GetAllSymbols()
-			selectedSymbols := strings.Split(cli.textInput.Value(), ",")
+			selectedSymbols := strings.Split(cli.textInput.Value(), " ")
 
 			for _, v := range selectedSymbols {
 				if !util.Contains(allSymbols, v) {

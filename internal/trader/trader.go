@@ -66,7 +66,7 @@ func SetupTrader() (*Trader, error) {
 
 	s["available_strategies"], err = storageClient.UpdateSetting(
 		s["available_strategies"].Name,
-		strings.Join(keys, ","),
+		strings.Join(keys, " "),
 	)
 	if err != nil {
 		return nil, err
@@ -102,6 +102,11 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 
 		for t.TradingRunning {
 			<-t.TickerChan
+
+			if !t.TradingRunning {
+				return
+			}
+
 			for _, symbol := range t.Settings["selected_symbols"].ValueArr {
 				go func(symbol string) {
 					klines, err := t.ExchangeClient.GetKlines(symbol, globals.Timeframe)

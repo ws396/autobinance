@@ -75,7 +75,7 @@ func (c *InMemoryClient) UpdateSetting(name, value string) (Setting, error) {
 	s := c.settings[name]
 	s.Value = value
 	c.settings[name] = s
-	s.ValueArr = strings.Split(value, ",")
+	s.ValueArr = strings.Split(value, " ")
 
 	return s, nil
 }
