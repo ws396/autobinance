@@ -28,6 +28,7 @@ type Trader struct {
 }
 
 func SetupTrader() (*Trader, error) {
+	// This ticker leaks, probably need to restrain from mocking through TickerChan.
 	ticker := time.NewTicker(globals.Durations[globals.Timeframe] / 6)
 	apiKey := os.Getenv("API_KEY")
 	secretKey := os.Getenv("SECRET_KEY")
@@ -80,7 +81,9 @@ func SetupTrader() (*Trader, error) {
 	}, nil
 }
 
-func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
+func (t *Trader) StartTradingSession(w output.Writer) chan error {
+	errChan := make(chan error)
+
 	go func() {
 		if t.TradingRunning {
 			errChan <- globals.ErrTradingAlreadyRunning
@@ -104,7 +107,7 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 			<-t.TickerChan
 
 			if !t.TradingRunning {
-				return
+				break
 			}
 
 			for _, symbol := range t.Settings["selected_symbols"].ValueArr {
@@ -149,7 +152,11 @@ func (t *Trader) StartTradingSession(w output.Writer, errChan chan error) {
 
 			errChan <- nil
 		}
+
+		close(errChan)
 	}()
+
+	return errChan
 }
 
 func (t *Trader) StopTradingSession() error {

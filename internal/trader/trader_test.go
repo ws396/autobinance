@@ -159,6 +159,27 @@ func TestTrade(t *testing.T) {
 	})
 }
 
+func BenchmarkTrade(b *testing.B) {
+	series := getMockSeries()
+	trader, err := setupMockTrader()
+	if err != nil {
+		b.Errorf("failed to setup mock trader, %v", err)
+	}
+
+	b.Run("orders buy 10000 times", func(b *testing.B) {
+		for i := 0; i < 10000; i++ {
+			_, err := trader.Trade(
+				trader.Settings["selected_strategies"].ValueArr[0],
+				trader.Settings["selected_symbols"].ValueArr[0],
+				series,
+			)
+			if err != nil {
+				b.Errorf("failed to attempt trade, %v", err)
+			}
+		}
+	})
+}
+
 func setupMockTrader() (*Trader, error) {
 	storageClient := storage.NewInMemoryClient()
 	exchangeClient := binancew.NewExtClientSim("", "")

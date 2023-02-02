@@ -72,8 +72,7 @@ func init() {
 					return nil
 				}
 
-				errChan := make(chan error)
-				cli.T.StartTradingSession(w, errChan)
+				errChan := cli.T.StartTradingSession(w)
 				go func() {
 					for err := range errChan {
 						if err != nil {

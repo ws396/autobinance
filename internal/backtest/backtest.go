@@ -91,8 +91,7 @@ func Backtest(input string, settings map[string]storage.Setting) (map[string]sto
 		return nil, err
 	}
 
-	errChan := make(chan error)
-	btTrader.StartTradingSession(w, errChan)
+	errChan := btTrader.StartTradingSession(w)
 	klinesLen := len(klinesFeed[settings["selected_symbols"].ValueArr[0]])
 	for i := 0; i < klinesLen-batchLimit; i++ {
 		tickerChan <- time.Now()

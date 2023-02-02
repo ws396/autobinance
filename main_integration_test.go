@@ -24,7 +24,8 @@ func (p *mockWriter) WriteToLog(orders []*storage.Order) error {
 	return nil
 }
 
-func TestTrade(t *testing.T) {
+// Need to mock the data source too, also this is not an integration test as of now :)
+func TestStartTradingSession(t *testing.T) {
 	t.Run("successfully starts trading session and attempts one trade", func(t *testing.T) {
 		storageClient := &storage.GORMClient{setupMockStorage(t, mockExpect)}
 		exchangeClient := binancew.NewExtClientSim("", "")
@@ -49,8 +50,7 @@ func TestTrade(t *testing.T) {
 		w := &mockWriter{
 			dataChan: make(chan []*storage.Order),
 		}
-		errChan := make(chan error)
-		trader.StartTradingSession(w, errChan)
+		_ = trader.StartTradingSession(w)
 		tickerChan <- time.Now()
 		data := <-w.dataChan
 		got := data[0].Symbol
